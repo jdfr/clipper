@@ -1,0 +1,9 @@
+This is a fork of the C++ version of Angus Johnson's excellent ClipperLib library: http://www.angusj.com/delphi/clipper.php
+
+Main differences:
+
+-it is patched to use intrinsic 128 bit integer multiplication if available
+
+-simple IO functions for ClipperLib::Paths and related types are added in a separate file
+
+Please note: as ClipperLib, this is intended to be source-included (rather than linked) in other projects
