@@ -375,6 +375,38 @@ Int128 Int128Mul (long64 lhs, long64 rhs)
   if (negate) tmp = -tmp;
   return tmp;
 };
+
+#   ifdef CLIPPER_USE_INTRINSIC_128
+
+//intrinsic support for 128-bit integers in x64-GCC 
+#      if defined(__GNUC__) && defined(__SIZEOF_INT128__)
+
+#          define MUL_TEST_EQ(a,b,c,d,result) { \
+               __int128 ab = ((__int128)(a))*(b); \
+               __int128 cd = ((__int128)(c))*(d); \
+               result = ab==cd; \
+           }
+
+#      elif defined(_WIN64)
+
+#          include <intrin.h>
+#          pragma intrinsic(_mul128)
+
+#          define MUL_TEST_EQ(a,b,c,d,result) { \
+               __int64 lo1, hi1, lo2, hi2; \
+               lo1 = _mul128(a, b, &hi1); \
+               lo2 = _mul128(c, d, &hi2); \
+               result = (lo1 == lo2) & (hi1 == hi2); \
+           }
+
+#      else
+
+#          undef CLIPPER_USE_INTRINSIC_128
+
+#      endif
+
+#   endif //CLIPPER_USE_INTRINSIC_128
+
 #endif
 
 //------------------------------------------------------------------------------
@@ -535,7 +567,11 @@ bool SlopesEqual(const TEdge &e1, const TEdge &e2, bool UseFullInt64Range)
 {
 #ifndef use_int32
   if (UseFullInt64Range)
+#  ifdef CLIPPER_USE_INTRINSIC_128
+    { bool result; MUL_TEST_EQ(e1.Delta.Y, e2.Delta.X, e1.Delta.X, e2.Delta.Y, result); return result; }
+#  else
     return Int128Mul(e1.Delta.Y, e2.Delta.X) == Int128Mul(e1.Delta.X, e2.Delta.Y);
+#  endif
   else 
 #endif
     return e1.Delta.Y * e2.Delta.X == e1.Delta.X * e2.Delta.Y;
@@ -547,7 +583,11 @@ bool SlopesEqual(const IntPoint pt1, const IntPoint pt2,
 {
 #ifndef use_int32
   if (UseFullInt64Range)
+#  ifdef CLIPPER_USE_INTRINSIC_128
+    { bool result; MUL_TEST_EQ(pt1.Y-pt2.Y, pt2.X-pt3.X, pt1.X-pt2.X, pt2.Y-pt3.Y, result); return result; }
+#  else
     return Int128Mul(pt1.Y-pt2.Y, pt2.X-pt3.X) == Int128Mul(pt1.X-pt2.X, pt2.Y-pt3.Y);
+#  endif
   else 
 #endif
     return (pt1.Y-pt2.Y)*(pt2.X-pt3.X) == (pt1.X-pt2.X)*(pt2.Y-pt3.Y);
@@ -559,7 +599,11 @@ bool SlopesEqual(const IntPoint pt1, const IntPoint pt2,
 {
 #ifndef use_int32
   if (UseFullInt64Range)
+#  ifdef CLIPPER_USE_INTRINSIC_128
+    { bool result; MUL_TEST_EQ(pt1.Y-pt2.Y, pt3.X-pt4.X, pt1.X-pt2.X, pt3.Y-pt4.Y, result); return result; }
+#  else
     return Int128Mul(pt1.Y-pt2.Y, pt3.X-pt4.X) == Int128Mul(pt1.X-pt2.X, pt3.Y-pt4.Y);
+#  endif
   else 
 #endif
     return (pt1.Y-pt2.Y)*(pt3.X-pt4.X) == (pt1.X-pt2.X)*(pt3.Y-pt4.Y);
