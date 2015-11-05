@@ -5,15 +5,6 @@
 
 #include "common.hpp"
 
-typedef struct Slice {
-    std::vector<double> zs;
-    clp::Paths paths;
-    Slice(){}
-    Slice(clp::Paths p) : paths(p) {}
-} Slice;
-
-typedef std::vector<Slice> Slices;
-
 #if defined(_MSC_VER) //(defined(_WIN32) || defined(_WIN64))
   #define MY_FILENAME __FILE__
   #define MY_FUNCTION __FUNCTION__
@@ -36,17 +27,30 @@ typedef std::vector<Slice> Slices;
   void setIOErrOutput(FILE* err);
 #endif
 
-void   readInt64        (FILE * f, int64 &v);
-void  writeInt64        (FILE * f, int64 &v);
-void   readClipperPaths(FILE *f, clp::Paths &paths);
-void  writeClipperPaths(FILE *f, clp::Paths &paths, PathCloseMode mode);
-void   readClipperSlice (FILE *f, Slice      &slice);
-void  writeClipperSlice (FILE *f, Slice      &slice, PathCloseMode mode);
+inline void readInt64(FILE * f, int64 &v) {
+    READ_BINARY(&v, sizeof(int64), 1, f);
+}
+inline void writeInt64(FILE * f, int64 &v) {
+    WRITE_BINARY(&v, sizeof(int64), 1, f);
+}
+inline void readDouble(FILE * f, double &v) {
+    READ_BINARY(&v, sizeof(double), 1, f);
+}
+inline void writeDouble(FILE * f, double &v) {
+    WRITE_BINARY(&v, sizeof(double), 1, f);
+}
+
+typedef std::vector<FILE*> FILES;
+
+void   readClipperPaths (FILE *f, clp::Paths &paths);
+void  writeClipperPaths (FILE *f, clp::Paths &paths, PathCloseMode mode);
 void  writeClipperSlice (FILE *f, clp::Paths &paths, std::vector<double> &zs, PathCloseMode mode);
-void   readClipperSlices(FILE *f, Slices     &slices);
-void  writeClipperSlices(FILE *f, Slices     &slices, PathCloseMode mode);
-void   readClipperSlicesWithTemplate(FILE *f, Slices &slices, Slice &templt);
+
+void   readDoublePaths  (FILE *f, clp::Paths  &paths, double scalingfactor);
+void  writeDoublePaths  (FILE *f, clp::Paths  &paths, double scalingfactor, PathCloseMode mode);
+void  writeDoublePaths  (FILES fs,clp::Paths  &paths, double scalingfactor, PathCloseMode mode);
 
 void  writePrefixedClipperPaths(FILE *f, clp::Paths &paths, PathCloseMode mode);
+void   readPrefixedClipperPaths(FILE *f, clp::Paths &paths);
 
 #endif
