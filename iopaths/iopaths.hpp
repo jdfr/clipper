@@ -27,20 +27,12 @@
   void setIOErrOutput(FILE* err);
 #endif
 
-inline void readInt64(FILE * f, int64 &v) {
-    READ_BINARY(&v, sizeof(int64), 1, f);
-}
-inline void writeInt64(FILE * f, int64 &v) {
-    WRITE_BINARY(&v, sizeof(int64), 1, f);
-}
-inline void readDouble(FILE * f, double &v) {
-    READ_BINARY(&v, sizeof(double), 1, f);
-}
-inline void writeDouble(FILE * f, double &v) {
-    WRITE_BINARY(&v, sizeof(double), 1, f);
-}
-
 typedef std::vector<FILE*> FILES;
+
+inline void   readInt64(FILE * f, int64 &v)  {  READ_BINARY(&v, sizeof(int64),  1, f); }
+inline void  writeInt64(FILE * f, int64 &v)  { WRITE_BINARY(&v, sizeof(int64),  1, f); }
+inline void  readDouble(FILE * f, double &v) {  READ_BINARY(&v, sizeof(double), 1, f); }
+inline void writeDouble(FILE * f, double &v) { WRITE_BINARY(&v, sizeof(double), 1, f); }
 
 void   readClipperPaths (FILE *f, clp::Paths &paths);
 void  writeClipperPaths (FILE *f, clp::Paths &paths, PathCloseMode mode);

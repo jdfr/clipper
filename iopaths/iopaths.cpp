@@ -4,7 +4,8 @@
 
 typedef clp::Paths::iterator psi;
 typedef clp::Path::iterator pi;
-typedef std::vector<double>::iterator di;
+typedef DPaths::iterator dsi;
+typedef DPath::iterator di;
 
 //we assume that sizeof(clp::cInt)==sizeof(double)
 
@@ -23,7 +24,6 @@ typedef std::vector<double>::iterator di;
     STDERR = err;
   }
 #endif
-
 
 void   readDoublePaths(FILE *f, clp::Paths  &paths, double scalingfactor) {
     int64 numpaths, numpoints;
