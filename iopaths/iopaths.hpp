@@ -32,10 +32,20 @@ typedef std::vector<DPath>            DPaths;
 
 typedef std::vector<FILE*> FILES;
 
+typedef union T64 {
+    clp::cInt i;
+    double d;
+    T64() {}
+    T64(clp::cInt _i) : i(_i) {}
+    T64(double    _d) : d(_d) {}
+} T64;
+
 inline void   readInt64(FILE * f, int64 &v)  {  READ_BINARY(&v, sizeof(int64),  1, f); }
 inline void  writeInt64(FILE * f, int64 &v)  { WRITE_BINARY(&v, sizeof(int64),  1, f); }
 inline void  readDouble(FILE * f, double &v) {  READ_BINARY(&v, sizeof(double), 1, f); }
 inline void writeDouble(FILE * f, double &v) { WRITE_BINARY(&v, sizeof(double), 1, f); }
+inline void     readT64(FILE *f, T64 *vals, size_t numvals) {  READ_BINARY(vals, sizeof(T64), numvals, f); }
+inline void    writeT64(FILE *f, T64 *vals, size_t numvals) { WRITE_BINARY(vals, sizeof(T64), numvals, f); }
 
 void   readClipperPaths (FILE *f, clp::Paths &paths);
 void  writeClipperPaths (FILE *f, clp::Paths &paths, PathCloseMode mode);
