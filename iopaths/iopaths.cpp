@@ -25,6 +25,19 @@ typedef DPath::iterator di;
   }
 #endif
 
+//this assumes that sizeof(clp::cInt)==sizeof(double)==8
+int getPathsSerializedSize(clp::Paths &paths, PathCloseMode mode) {
+    int s = 0;
+    for (psi path = paths.begin(); path != paths.end(); ++path) {
+        s += (int)path->size();
+    }
+    s *= 2;
+    s += 1 + ((int)paths.size());
+    if ((mode == PathLoop) && (paths.size() > 0)) s += 2 * (int)paths.size();
+    s *= 8;
+    return s;
+}
+
 void   readDoublePaths(FILE *f, clp::Paths  &paths, double scalingfactor) {
     int64 numpaths, numpoints;
 
