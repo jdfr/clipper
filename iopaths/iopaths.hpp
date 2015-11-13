@@ -27,6 +27,9 @@
   void setIOErrOutput(FILE* err);
 #endif
 
+typedef std::vector<clp::DoublePoint> DPath;
+typedef std::vector<DPath>            DPaths;
+
 typedef std::vector<FILE*> FILES;
 
 inline void   readInt64(FILE * f, int64 &v)  {  READ_BINARY(&v, sizeof(int64),  1, f); }
@@ -39,6 +42,7 @@ void  writeClipperPaths (FILE *f, clp::Paths &paths, PathCloseMode mode);
 void  writeClipperSlice (FILE *f, clp::Paths &paths, std::vector<double> &zs, PathCloseMode mode);
 
 void   readDoublePaths  (FILE *f, clp::Paths  &paths, double scalingfactor);
+void   readDoublePaths  (FILE *f,     DPaths  &paths);
 void  writeDoublePaths  (FILE *f, clp::Paths  &paths, double scalingfactor, PathCloseMode mode);
 void  writeDoublePaths  (FILES fs,clp::Paths  &paths, double scalingfactor, PathCloseMode mode);
 
