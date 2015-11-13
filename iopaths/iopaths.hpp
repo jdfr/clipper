@@ -47,6 +47,9 @@ inline void writeDouble(FILE * f, double &v) { WRITE_BINARY(&v, sizeof(double), 
 inline void     readT64(FILE *f, T64 *vals, size_t numvals) {  READ_BINARY(vals, sizeof(T64), numvals, f); }
 inline void    writeT64(FILE *f, T64 *vals, size_t numvals) { WRITE_BINARY(vals, sizeof(T64), numvals, f); }
 
+//this assumes that sizeof(clp::cInt)==sizeof(double)==sizeof(T64)==8
+int getPathsSerializedSize(clp::Paths &paths, PathCloseMode mode);
+
 void   readClipperPaths (FILE *f, clp::Paths &paths);
 void  writeClipperPaths (FILE *f, clp::Paths &paths, PathCloseMode mode);
 void  writeClipperSlice (FILE *f, clp::Paths &paths, std::vector<double> &zs, PathCloseMode mode);
