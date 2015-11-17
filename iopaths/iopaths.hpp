@@ -56,6 +56,7 @@ void  writeClipperSlice (FILE *f, clp::Paths &paths, std::vector<double> &zs, Pa
 
 void   readDoublePaths  (FILE *f, clp::Paths  &paths, double scalingfactor);
 void   readDoublePaths  (FILE *f,     DPaths  &paths);
+void  writeDoublePaths  (FILE *f,     DPaths  &paths,                       PathCloseMode mode);
 void  writeDoublePaths  (FILE *f, clp::Paths  &paths, double scalingfactor, PathCloseMode mode);
 void  writeDoublePaths  (FILES fs,clp::Paths  &paths, double scalingfactor, PathCloseMode mode);
 
