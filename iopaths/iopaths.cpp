@@ -74,6 +74,23 @@ void   readDoublePaths(FILE *f, DPaths  &paths) {
     }
 }
 
+void  writeDoublePaths(FILE *f, DPaths &paths, PathCloseMode mode) {
+    int64 numpaths = paths.size(), numpoints, numpointsdeclared;
+    WRITE_BINARY(&numpaths, sizeof(int64), 1, f);
+
+    bool addlast = (mode == PathLoop) && (paths.size() > 0);
+    for (dsi path = paths.begin(); path != paths.end(); ++path) {
+        numpoints = path->size();
+        numpointsdeclared = addlast ? (numpoints + 1) : numpoints;
+        int64 num = numpoints * 2;
+        WRITE_BINARY(&numpointsdeclared, sizeof(int64), 1, f);
+        WRITE_BINARY(&((*path)[0]), sizeof(double), num, f);
+        if (addlast) {
+            WRITE_BINARY(&((*path)[0]), sizeof(double), 2, f);
+        }
+    }
+}
+
 void  writeDoublePaths(FILE *f, clp::Paths  &paths, double scalingfactor, PathCloseMode mode) {
     writeDoublePaths(FILES(1, f), paths, scalingfactor, mode);
 }
