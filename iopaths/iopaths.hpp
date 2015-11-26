@@ -2,6 +2,7 @@
 #define  IOPATHS_HEADER
 
 #include <stdio.h>
+#include <errno.h>
 
 #include "common.hpp"
 
@@ -24,7 +25,7 @@
 #define STRINGIZE2(x) #x
 #define LINE_STRING STRINGIZE(__LINE__)
 
-#define IOERR(f, num, numio) {fprintf(stderr, "IOERROR IN LINE %s OF %s, function %s. ERRNO: %d. INTENDED/REAL IO BYTES: %d/%d\n", LINE_STRING, MY_FILENAME, MY_FUNCTION, ferror((f)), (num), (numio)); exit(-1);}
+#define IOERR(f, num, numio) {fprintf(stderr, "IOERROR IN LINE %s OF %s, function %s. ERRNO: %d. INTENDED/REAL IO BYTES: %d/%d\n", LINE_STRING, MY_FILENAME, MY_FUNCTION, errno, (num), (numio)); exit(-1);}
 
 #define  READ_BINARY_NAIVE(start, size, num, f)   {size_t numio = fread  ((start), (size), (num), (f)); if (numio!=(num)) IOERR((f), (num), numio); }
 #define WRITE_BINARY_NAIVE(start, size, num, f)   {size_t numio = fwrite ((start), (size), (num), (f)); if (numio!=(num)) IOERR((f), (num), numio); }
