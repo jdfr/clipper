@@ -1,7 +1,5 @@
 #include "iopaths.hpp"
 
-#include <stdlib.h>
-
 typedef clp::Paths::iterator psi;
 typedef clp::Path::iterator pi;
 typedef DPaths::iterator dsi;
