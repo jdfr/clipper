@@ -89,12 +89,6 @@ struct IntersectNode {
   IntPoint        Pt;
 };
 
-struct LocalMinimum {
-  cInt          Y;
-  TEdge        *LeftBound;
-  TEdge        *RightBound;
-};
-
 struct OutPt;
 
 //OutRec: contains a path in the clipping solution. Edges in the AEL will

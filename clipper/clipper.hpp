@@ -202,7 +202,11 @@ enum EdgeSide { esLeft = 1, esRight = 2};
 //forward declarations (for stuff used internally) ...
 struct TEdge;
 struct IntersectNode;
-struct LocalMinimum;
+struct LocalMinimum {
+  cInt          Y;
+  TEdge        *LeftBound;
+  TEdge        *RightBound;
+};
 struct OutPt;
 struct OutRec;
 struct Join;
