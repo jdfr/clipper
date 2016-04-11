@@ -81,9 +81,6 @@ public:
     bool   readDoublePaths(DPaths  &paths);
     bool  writeDoublePaths(DPaths  &paths, PathCloseMode mode);
     bool  writeDoublePaths(clp::Paths  &paths, double scalingfactor, PathCloseMode mode);
-
-    bool  writePrefixedClipperPaths(clp::Paths &paths, PathCloseMode mode);
-    bool   readPrefixedClipperPaths(clp::Paths &paths);
 };
 
 //this assumes that sizeof(clp::cInt)==sizeof(double)==sizeof(T64)==8
