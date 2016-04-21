@@ -2,8 +2,8 @@ This is a fork of the C++ version of Angus Johnson's excellent ClipperLib librar
 
 Main differences:
 
--it is patched to use intrinsic 128 bit integer multiplication if available
+-it is patched to use native 128 bit integer multiplication if available (with Visual Studio's intrinsics and GCC's __int128)
 
 -simple IO functions for ClipperLib::Paths and related types are added in a separate file
 
-Please note: as ClipperLib, this is intended to be source-included (rather than linked) in other projects
+Please note: as the original ClipperLib, this is intended to be source-included (rather than linked) in other projects
