@@ -143,12 +143,25 @@ inline cInt Abs(cInt val)
 // PolyTree methods ...
 //------------------------------------------------------------------------------
 
-void PolyTree::Clear()
-{
-    for (PolyNodes::size_type i = 0; i < AllNodes.size(); ++i)
-      delete AllNodes[i];
-    AllNodes.resize(0); 
-    Childs.resize(0);
+void PolyTree::Clear() {
+  if (CLIPPER_MMANAGER::useDelete) {
+      for (PolyNodes::size_type i = 0; i < AllNodes.size(); ++i) delete AllNodes[i];
+  } else {
+      //this is to avoid memory leaks (PolyNode includes objects with two potentially different allocators)
+      for (PolyNodes::size_type i = 0; i < AllNodes.size(); ++i) AllNodes[i]->~PolyNode();
+  }
+  AllNodes.resize(0);
+  Childs.resize(0);
+}
+//------------------------------------------------------------------------------
+
+void PolyTree::Reset() {
+  if (CLIPPER_MMANAGER::useReset) {
+    PolyNodes::allocator_type allocator = AllNodes.get_allocator();
+    //re-create exactly in the same order as they are created in the construction phase
+    Childs   = PolyNodes(allocator);
+    AllNodes = PolyNodes(allocator);
+  }
 }
 //------------------------------------------------------------------------------
 
@@ -171,11 +184,6 @@ int PolyTree::Total() const
 
 //------------------------------------------------------------------------------
 // PolyNode methods ...
-//------------------------------------------------------------------------------
-
-PolyNode::PolyNode(): Parent(0), Index(0), m_IsOpen(false)
-{
-}
 //------------------------------------------------------------------------------
 
 int PolyNode::ChildCount() const
@@ -749,7 +757,7 @@ void DisposeOutPts(OutPt*& pp)
   {
     OutPt *tmpPp = pp;
     pp = pp->Next;
-    delete tmpPp;
+    if (CLIPPER_MMANAGER::useDelete) delete tmpPp;
   }
 }
 //------------------------------------------------------------------------------
@@ -918,7 +926,7 @@ bool HorzSegmentsOverlap(cInt seg1a, cInt seg1b, cInt seg2a, cInt seg2b)
 // ClipperBase class methods ...
 //------------------------------------------------------------------------------
 
-ClipperBase::ClipperBase() //constructor
+ClipperBase::ClipperBase(CLIPPER_MMANAGER &_manager) : allocPolyNode(_manager.get_allocator<PolyNode>()), allocTEdge(_manager.get_allocator<TEdge>()), allocLocalMinimum(_manager.get_allocator<LocalMinimum>()), allocOutRec(_manager.get_allocator<OutRec>()), alloccInt(_manager.get_allocator<cInt>()), manager(_manager), m_MinimaList(allocLocalMinimum), m_edges(allocTEdge), m_PolyOuts(allocOutRec), m_Scanbeam(std::less<cInt>(), std::vector<cInt, CLIPPER_ALLOCATOR<cInt> >(alloccInt)) //constructor
 {
   m_CurrentLM = m_MinimaList.begin(); //begin() == end() here
   m_UseFullRange = false;
@@ -1096,8 +1104,12 @@ bool ClipperBase::AddPath(const Path &pg, PolyType PolyTyp, bool Closed)
   if ((Closed && highI < 2) || (!Closed && highI < 1)) return false;
 
   //create a new edge array ...
-  TEdge *edges = new TEdge [highI +1];
-
+  TEdge *edges;
+  if (CLIPPER_MMANAGER::usePlacementNew) {
+      edges = new (manager.allocate(sizeof(TEdge)*(highI + 1))) TEdge[highI + 1];
+  } else {
+      edges = new TEdge[highI + 1];
+  }
   bool IsFlat = true;
   //1. Basic (first) edge initialization ...
   try
@@ -1115,7 +1127,7 @@ bool ClipperBase::AddPath(const Path &pg, PolyType PolyTyp, bool Closed)
   }
   catch(...)
   {
-    delete [] edges;
+    if (CLIPPER_MMANAGER::useDelete) delete[] edges;
     throw; //range test fails
   }
   TEdge *eStart = &edges[0];
@@ -1156,7 +1168,7 @@ bool ClipperBase::AddPath(const Path &pg, PolyType PolyTyp, bool Closed)
 
   if ((!Closed && (E == E->Next)) || (Closed && (E->Prev == E->Next)))
   {
-    delete [] edges;
+    if (CLIPPER_MMANAGER::useDelete) delete[] edges;
     return false;
   }
 
@@ -1184,7 +1196,7 @@ bool ClipperBase::AddPath(const Path &pg, PolyType PolyTyp, bool Closed)
   {
     if (Closed) 
     {
-      delete [] edges;
+    if (CLIPPER_MMANAGER::useDelete) delete[] edges;
       return false;
     }
     E->Prev->OutIdx = Skip;
@@ -1202,11 +1214,11 @@ bool ClipperBase::AddPath(const Path &pg, PolyType PolyTyp, bool Closed)
       E = E->Next;
     }
     m_MinimaList.push_back(locMin);
-    m_edges.push_back(edges);
+    if (CLIPPER_MMANAGER::useDelete) m_edges.push_back(edges);
 	  return true;
   }
 
-  m_edges.push_back(edges);
+  if (CLIPPER_MMANAGER::useDelete) m_edges.push_back(edges);
   bool leftBoundIsForward;
   TEdge* EMin = 0;
 
@@ -1242,6 +1254,8 @@ bool ClipperBase::AddPath(const Path &pg, PolyType PolyTyp, bool Closed)
     else locMin.LeftBound->WindDelta = 1;
     locMin.RightBound->WindDelta = -locMin.LeftBound->WindDelta;
 
+    //here we may do m_MinimaList.reserve(m_MinimaList.size() + VALUE_DERIVED_FROM(highI + 1));
+    
     E = ProcessBound(locMin.LeftBound, leftBoundIsForward);
     if (E->OutIdx == Skip) E = ProcessBound(E, leftBoundIsForward);
 
@@ -1271,24 +1285,32 @@ bool ClipperBase::AddPaths(const Paths &ppg, PolyType PolyTyp, bool Closed)
 void ClipperBase::Clear()
 {
   DisposeLocalMinimaList();
-  for (EdgeList::size_type i = 0; i < m_edges.size(); ++i)
-  {
-    TEdge* edges = m_edges[i];
-    delete [] edges;
+  if (CLIPPER_MMANAGER::useDelete) {
+      for (EdgeList::size_type i = 0; i < m_edges.size(); ++i) {
+        TEdge* edges = m_edges[i];
+        delete [] edges;
+      }
+      m_edges.clear();
   }
-  m_edges.clear();
+
   m_UseFullRange = false;
   m_HasOpenPaths = false;
 }
+
 //------------------------------------------------------------------------------
 
-void ClipperBase::Reset()
+void ClipperBase::ResetForExecute()
 {
   m_CurrentLM = m_MinimaList.begin();
   if (m_CurrentLM == m_MinimaList.end()) return; //ie nothing to process
   std::sort(m_MinimaList.begin(), m_MinimaList.end(), LocMinSorter());
 
-  m_Scanbeam = ScanbeamList(); //clears/resets priority_queue
+  /*the value here should just an educated guess, to avoid as much reallocations of m_Scanbeam's container as possible, because
+  incremental resizing of std::vector<T, ArenaAllocator<T> > uses O(N^2) memory, where N is the final m_Scanbeam.size()) */
+  //std::vector<cInt, ArenaAllocator<cInt> > scanBeamContainer(ArenaAllocator<cInt>(arena));
+  //scanBeamContainer.reserve(VALUE_ESTIMATED_FROM_INPUT_PATHS);
+  //m_Scanbeam = ScanbeamList(std::less<cInt>(), scanBeamContainer); //clears/resets priority_queue
+  m_Scanbeam = ScanbeamList(std::less<cInt>(), std::vector<cInt, CLIPPER_ALLOCATOR<cInt> >(alloccInt)); //clears/resets priority_queue
   //reset all edges ...
   for (MinimaList::iterator lm = m_MinimaList.begin(); lm != m_MinimaList.end(); ++lm)
   {
@@ -1397,7 +1419,7 @@ void ClipperBase::DisposeOutRec(PolyOutList::size_type index)
 {
   OutRec *outRec = m_PolyOuts[index];
   if (outRec->Pts) DisposeOutPts(outRec->Pts);
-  delete outRec;
+  if (CLIPPER_MMANAGER::useDelete) delete outRec;
   m_PolyOuts[index] = 0;
 }
 //------------------------------------------------------------------------------
@@ -1417,7 +1439,12 @@ void ClipperBase::DeleteFromAEL(TEdge *e)
 
 OutRec* ClipperBase::CreateOutRec()
 {
-  OutRec* result = new OutRec;
+  OutRec* result;
+  if (CLIPPER_MMANAGER::usePlacementNew) {
+      result = new (manager.allocate(sizeof(OutRec))) OutRec;
+  } else {
+      result = new OutRec;
+  }
   result->IsHole = false;
   result->IsOpen = false;
   result->FirstLeft = 0;
@@ -1509,7 +1536,7 @@ bool ClipperBase::LocalMinimaPending()
 // TClipper methods ...
 //------------------------------------------------------------------------------
 
-Clipper::Clipper(int initOptions) : ClipperBase() //constructor
+Clipper::Clipper(CLIPPER_MMANAGER &_manager, int initOptions) : ClipperBase(_manager), allocJoin(_manager.get_allocator<Join>()), allocIntersectNode(_manager.get_allocator<IntersectNode>()), m_Joins(allocJoin), m_GhostJoins(allocJoin), m_IntersectList(allocIntersectNode), m_Maxima(alloccInt) //constructor
 {
   m_ExecuteLocked = false;
   m_UseFullRange = false;
@@ -1580,6 +1607,21 @@ bool Clipper::Execute(ClipType clipType, PolyTree& polytree,
 }
 //------------------------------------------------------------------------------
 
+void Clipper::Reset() {
+    if (CLIPPER_MMANAGER::useReset) {
+        //re-create exactly in the same order as they are created in the construction phase
+        m_MinimaList    = MinimaList(allocLocalMinimum);
+        m_edges         = EdgeList(     allocTEdge);
+        m_PolyOuts      = PolyOutList(  allocOutRec);
+        m_Scanbeam      = ScanbeamList(std::less<cInt>(), std::vector<cInt, CLIPPER_ALLOCATOR<cInt> >(alloccInt)); //clears/resets priority_queue
+        m_Joins         = JoinList(     allocJoin);
+        m_GhostJoins    = JoinList(     allocJoin);
+        m_IntersectList = IntersectList(allocIntersectNode);
+        m_Maxima        = MaximaList(   alloccInt);
+    }
+}
+//------------------------------------------------------------------------------
+
 void Clipper::FixHoleLinkage(OutRec &outrec)
 {
   //skip OutRecs that (a) contain outermost polygons or
@@ -1597,10 +1639,14 @@ void Clipper::FixHoleLinkage(OutRec &outrec)
 
 bool Clipper::ExecuteInternal()
 {
+  /*the value here should be an educated guess, to avoid as much reallocations of m_PolyOuts as possible, because
+  incremental resizing of std::vector<T, ArenaAllocator<T> > uses O(N^2) memory, where N is the final m_PolyOuts.size()) */
+  //m_PolyOuts.reserve(m_PolyOuts.size() + VALUE_ESTIMATED_FROM_INPUT_PATHS);
   bool succeeded = true;
   try {
-    Reset();
-    m_Maxima = MaximaList();
+    ResetForExecute();
+    //m_Maxima = MaximaList(manager);
+    m_Maxima.clear();
     m_SortedEdges = 0;
 
     succeeded = true;
@@ -1979,7 +2025,12 @@ void Clipper::CopyAELToSEL()
 
 void Clipper::AddJoin(OutPt *op1, OutPt *op2, const IntPoint OffPt)
 {
-  Join* j = new Join;
+  Join* j;
+  if (CLIPPER_MMANAGER::usePlacementNew) {
+      j = new (manager.allocate(sizeof(Join))) Join;
+  } else {
+      j = new Join;
+  }
   j->OutPt1 = op1;
   j->OutPt2 = op2;
   j->OffPt = OffPt;
@@ -1989,23 +2040,32 @@ void Clipper::AddJoin(OutPt *op1, OutPt *op2, const IntPoint OffPt)
 
 void Clipper::ClearJoins()
 {
-  for (JoinList::size_type i = 0; i < m_Joins.size(); i++)
-    delete m_Joins[i];
+  if (CLIPPER_MMANAGER::useDelete) {
+    for (JoinList::size_type i = 0; i < m_Joins.size(); i++)
+      delete m_Joins[i];
+  }
   m_Joins.resize(0);
 }
 //------------------------------------------------------------------------------
 
 void Clipper::ClearGhostJoins()
 {
-  for (JoinList::size_type i = 0; i < m_GhostJoins.size(); i++)
-    delete m_GhostJoins[i];
+  if (CLIPPER_MMANAGER::useDelete) {
+    for (JoinList::size_type i = 0; i < m_GhostJoins.size(); i++)
+      delete m_GhostJoins[i];
+  }
   m_GhostJoins.resize(0);
 }
 //------------------------------------------------------------------------------
 
 void Clipper::AddGhostJoin(OutPt *op, const IntPoint OffPt)
 {
-  Join* j = new Join;
+  Join* j;
+  if (CLIPPER_MMANAGER::usePlacementNew) {
+      j = new (manager.allocate(sizeof(Join))) Join;
+  } else {
+      j = new Join;
+  }
   j->OutPt1 = op;
   j->OutPt2 = 0;
   j->OffPt = OffPt;
@@ -2504,7 +2564,12 @@ OutPt* Clipper::AddOutPt(TEdge *e, const IntPoint &pt)
   {
     OutRec *outRec = CreateOutRec();
     outRec->IsOpen = (e->WindDelta == 0);
-    OutPt* newOp = new OutPt;
+    OutPt* newOp;
+    if (CLIPPER_MMANAGER::usePlacementNew) {
+        newOp = new (manager.allocate(sizeof(OutPt))) OutPt;
+    } else {
+        newOp = new OutPt;
+    }
     outRec->Pts = newOp;
     newOp->Idx = outRec->Idx;
     newOp->Pt = pt;
@@ -2524,7 +2589,12 @@ OutPt* Clipper::AddOutPt(TEdge *e, const IntPoint &pt)
 	if (ToFront && (pt == op->Pt)) return op;
     else if (!ToFront && (pt == op->Prev->Pt)) return op->Prev;
 
-    OutPt* newOp = new OutPt;
+    OutPt* newOp;
+    if (CLIPPER_MMANAGER::usePlacementNew) {
+        newOp = new (manager.allocate(sizeof(OutPt))) OutPt;
+    } else {
+        newOp = new OutPt;
+    }
     newOp->Idx = outRec->Idx;
     newOp->Pt = pt;
     newOp->Next = op;
@@ -2881,8 +2951,10 @@ bool Clipper::ProcessIntersections(const cInt topY)
 
 void Clipper::DisposeIntersectNodes()
 {
-  for (size_t i = 0; i < m_IntersectList.size(); ++i )
-    delete m_IntersectList[i];
+  if (CLIPPER_MMANAGER::useDelete) {
+    for (size_t i = 0; i < m_IntersectList.size(); ++i )
+      delete m_IntersectList[i];
+  }
   m_IntersectList.clear();
 }
 //------------------------------------------------------------------------------
@@ -2916,7 +2988,12 @@ void Clipper::BuildIntersectList(const cInt topY)
       {
         IntersectPoint(*e, *eNext, Pt);
         if (Pt.Y < topY) Pt = IntPoint(TopX(*e, topY), topY);
-        IntersectNode * newNode = new IntersectNode;
+        IntersectNode * newNode;
+        if (CLIPPER_MMANAGER::usePlacementNew) {
+            newNode = new (manager.allocate(sizeof(IntersectNode))) IntersectNode;
+        } else {
+            newNode = new IntersectNode;
+        }
         newNode->Edge1 = e;
         newNode->Edge2 = eNext;
         newNode->Pt = Pt;
@@ -2946,7 +3023,7 @@ void Clipper::ProcessIntersectList()
       IntersectEdges( iNode->Edge1, iNode->Edge2, iNode->Pt);
       SwapPositionsInAEL( iNode->Edge1 , iNode->Edge2 );
     }
-    delete iNode;
+    if (CLIPPER_MMANAGER::useDelete) delete iNode;
   }
   m_IntersectList.clear();
 }
@@ -3040,69 +3117,98 @@ void Clipper::DoMaxima(TEdge *e)
 }
 //------------------------------------------------------------------------------
 
-void Clipper::ProcessEdgesAtTopOfScanbeam(const cInt topY)
-{
-  TEdge* e = m_ActiveEdges;
-  while( e )
-  {
-    //1. process maxima, treating them as if they're 'bent' horizontal edges,
-    //   but exclude maxima with horizontal edges. nb: e can't be a horizontal.
-    bool IsMaximaEdge = IsMaxima(e, topY);
+//implement enable_if here (because this code must be compilable in C++03)
+template <bool B, class T = void> struct enable_if { typedef T type; };
+template         <class T>        struct enable_if<false, T> {};
 
-    if(IsMaximaEdge)
-    {
-      TEdge* eMaxPair = GetMaximaPairEx(e);
-      IsMaximaEdge = (!eMaxPair || !IsHorizontal(*eMaxPair));
-    }
+//this is necessary because most implementations of std::list::sort use temporary lists that do not get their allocators from the parent list,
+//so they require the allocator to be default-constructible, and this is not the case for ArenaAllocator...
+template<typename T, typename A> void list_sort(typename enable_if< CLIPPER_MMANAGER::allocator_default_constructible, std::list<T, A> >::type &list) { list.sort(); }
+template<typename T, typename A> void list_sort(typename enable_if<!CLIPPER_MMANAGER::allocator_default_constructible, std::list<T, A> >::type &list) {
+    if (!list.empty() && (++list.begin()!=list.end())) {
+        std::list<T, A> carry(list.get_allocator()), *fill, *idx;
 
-    if(IsMaximaEdge)
-    {
-      if (m_StrictSimple) m_Maxima.push_back(e->Top.X);
-      TEdge* ePrev = e->PrevInAEL;
-      DoMaxima(e);
-      if( !ePrev ) e = m_ActiveEdges;
-      else e = ePrev->NextInAEL;
-    }
-    else
-    {
-      //2. promote horizontal edges, otherwise update Curr.X and Curr.Y ...
-      if (IsIntermediate(e, topY) && IsHorizontal(*e->NextInLML))
-      {
-        UpdateEdgeIntoAEL(e);
-        if (e->OutIdx >= 0)
-          AddOutPt(e, e->Bot);
-        AddEdgeToSEL(e);
-      } 
-      else
-      {
-        e->Curr.X = TopX( *e, topY );
-        e->Curr.Y = topY;
-      }
+        std::vector<std::list<T, A> > vec(64, std::list<T, A>(list.get_allocator()));
+        fill = &vec.front();
 
-      //When StrictlySimple and 'e' is being touched by another edge, then
-      //make sure both edges have a vertex here ...
-      if (m_StrictSimple)
-      {  
-        TEdge* ePrev = e->PrevInAEL;
-        if ((e->OutIdx >= 0) && (e->WindDelta != 0) && ePrev && (ePrev->OutIdx >= 0) &&
-          (ePrev->Curr.X == e->Curr.X) && (ePrev->WindDelta != 0))
-        {
-          IntPoint pt = e->Curr;
-#ifdef use_xyz
-          SetZ(pt, *ePrev, *e);
-#endif
-          OutPt* op = AddOutPt(ePrev, pt);
-          OutPt* op2 = AddOutPt(e, pt);
-          AddJoin(op, op2, pt); //StrictlySimple (type-3) join
+        do {
+            carry.splice(carry.begin(), list, list.begin());
+            for (idx = &vec.front(); idx != fill && !idx->empty(); ++idx) {
+                idx->merge(carry);
+                carry.swap(*idx);
+            }
+            carry.swap(*idx);
+            if (idx == fill) ++fill;
+        } while (!list.empty());
+
+        for (idx = &vec[1]; idx != fill; ++idx) {
+            idx->merge(*(idx - 1));
         }
-      }
-
-      e = e->NextInAEL;
+        list.swap(*(fill - 1));
     }
+}
+
+
+void Clipper::ProcessEdgesAtTopOfScanbeam(const cInt topY) {
+    TEdge* e = m_ActiveEdges;
+    while (e)
+    {
+        //1. process maxima, treating them as if they're 'bent' horizontal edges,
+        //   but exclude maxima with horizontal edges. nb: e can't be a horizontal.
+        bool IsMaximaEdge = IsMaxima(e, topY);
+
+        if (IsMaximaEdge)
+        {
+            TEdge* eMaxPair = GetMaximaPairEx(e);
+            IsMaximaEdge = (!eMaxPair || !IsHorizontal(*eMaxPair));
+        }
+
+        if (IsMaximaEdge)
+        {
+            if (m_StrictSimple) m_Maxima.push_back(e->Top.X);
+            TEdge* ePrev = e->PrevInAEL;
+            DoMaxima(e);
+            if (!ePrev) e = m_ActiveEdges;
+            else e = ePrev->NextInAEL;
+        } else
+        {
+            //2. promote horizontal edges, otherwise update Curr.X and Curr.Y ...
+            if (IsIntermediate(e, topY) && IsHorizontal(*e->NextInLML))
+            {
+                UpdateEdgeIntoAEL(e);
+                if (e->OutIdx >= 0)
+                    AddOutPt(e, e->Bot);
+                AddEdgeToSEL(e);
+            } else
+            {
+                e->Curr.X = TopX(*e, topY);
+                e->Curr.Y = topY;
+            }
+
+            //When StrictlySimple and 'e' is being touched by another edge, then
+            //make sure both edges have a vertex here ...
+            if (m_StrictSimple)
+            {
+                TEdge* ePrev = e->PrevInAEL;
+                if ((e->OutIdx >= 0) && (e->WindDelta != 0) && ePrev && (ePrev->OutIdx >= 0) &&
+                    (ePrev->Curr.X == e->Curr.X) && (ePrev->WindDelta != 0))
+                {
+                    IntPoint pt = e->Curr;
+#ifdef use_xyz
+                    SetZ(pt, *ePrev, *e);
+#endif
+                    OutPt* op = AddOutPt(ePrev, pt);
+                    OutPt* op2 = AddOutPt(e, pt);
+                    AddJoin(op, op2, pt); //StrictlySimple (type-3) join
+                }
+            }
+
+            e = e->NextInAEL;
+        }
   }
 
   //3. Process horizontals at the Top of the scanbeam ...
-  m_Maxima.sort();
+  list_sort<cInt, CLIPPER_ALLOCATOR<cInt> >(m_Maxima);
   ProcessHorizontals();
   m_Maxima.clear();
 
@@ -3157,7 +3263,7 @@ void Clipper::FixupOutPolyline(OutRec &outrec)
       OutPt *tmpPP = pp->Prev;
       tmpPP->Next = pp->Next;
       pp->Next->Prev = tmpPP;
-      delete pp;
+      if (CLIPPER_MMANAGER::useDelete) delete pp;
       pp = tmpPP;
     }
   }
@@ -3199,7 +3305,7 @@ void Clipper::FixupOutPolygon(OutRec &outrec)
             pp->Prev->Next = pp->Next;
             pp->Next->Prev = pp->Prev;
             pp = pp->Prev;
-            delete tmp;
+            if (CLIPPER_MMANAGER::useDelete) delete tmp;
         }
         else if (pp == lastOK) break;
         else
@@ -3259,7 +3365,13 @@ void Clipper::BuildResult2(PolyTree& polytree)
         int cnt = PointCount(outRec->Pts);
         if ((outRec->IsOpen && cnt < 2) || (!outRec->IsOpen && cnt < 3)) continue;
         FixHoleLinkage(*outRec);
-        PolyNode* pn = new PolyNode();
+        PolyNode* pn;
+        if (CLIPPER_MMANAGER::usePlacementNew) {
+            pn = new (manager.allocate(sizeof(PolyNode))) PolyNode(allocPolyNode);
+        } else {
+            pn = new PolyNode(allocPolyNode);
+        }
+            
         //nb: polytree takes ownership of all the PolyNodes
         polytree.AllNodes.push_back(pn);
         outRec->PolyNd = pn;
@@ -3376,9 +3488,15 @@ void Clipper::InsertEdgeIntoAEL(TEdge *edge, TEdge* startEdge)
 }
 //----------------------------------------------------------------------
 
-OutPt* DupOutPt(OutPt* outPt, bool InsertAfter)
+OutPt* DupOutPt(OutPt* outPt, bool InsertAfter, CLIPPER_MMANAGER &manager)
 {
-  OutPt* result = new OutPt;
+  OutPt* result;
+  if (CLIPPER_MMANAGER::usePlacementNew) {
+      result = new (manager.allocate(sizeof(OutPt))) OutPt;
+  } else {
+      result = new OutPt;
+  }
+
   result->Pt = outPt->Pt;
   result->Idx = outPt->Idx;
   if (InsertAfter)
@@ -3400,7 +3518,7 @@ OutPt* DupOutPt(OutPt* outPt, bool InsertAfter)
 //------------------------------------------------------------------------------
 
 bool JoinHorz(OutPt* op1, OutPt* op1b, OutPt* op2, OutPt* op2b,
-  const IntPoint Pt, bool DiscardLeft)
+  const IntPoint Pt, bool DiscardLeft, CLIPPER_MMANAGER &manager)
 {
   Direction Dir1 = (op1->Pt.X > op1b->Pt.X ? dRightToLeft : dLeftToRight);
   Direction Dir2 = (op2->Pt.X > op2b->Pt.X ? dRightToLeft : dLeftToRight);
@@ -3417,12 +3535,12 @@ bool JoinHorz(OutPt* op1, OutPt* op1b, OutPt* op2, OutPt* op2b,
       op1->Next->Pt.X >= op1->Pt.X && op1->Next->Pt.Y == Pt.Y)  
         op1 = op1->Next;
     if (DiscardLeft && (op1->Pt.X != Pt.X)) op1 = op1->Next;
-    op1b = DupOutPt(op1, !DiscardLeft);
+    op1b = DupOutPt(op1, !DiscardLeft, manager);
     if (op1b->Pt != Pt) 
     {
       op1 = op1b;
       op1->Pt = Pt;
-      op1b = DupOutPt(op1, !DiscardLeft);
+      op1b = DupOutPt(op1, !DiscardLeft, manager);
     }
   } 
   else
@@ -3431,12 +3549,12 @@ bool JoinHorz(OutPt* op1, OutPt* op1b, OutPt* op2, OutPt* op2b,
       op1->Next->Pt.X <= op1->Pt.X && op1->Next->Pt.Y == Pt.Y) 
         op1 = op1->Next;
     if (!DiscardLeft && (op1->Pt.X != Pt.X)) op1 = op1->Next;
-    op1b = DupOutPt(op1, DiscardLeft);
+    op1b = DupOutPt(op1, DiscardLeft, manager);
     if (op1b->Pt != Pt)
     {
       op1 = op1b;
       op1->Pt = Pt;
-      op1b = DupOutPt(op1, DiscardLeft);
+      op1b = DupOutPt(op1, DiscardLeft, manager);
     }
   }
 
@@ -3446,12 +3564,12 @@ bool JoinHorz(OutPt* op1, OutPt* op1b, OutPt* op2, OutPt* op2b,
       op2->Next->Pt.X >= op2->Pt.X && op2->Next->Pt.Y == Pt.Y)
         op2 = op2->Next;
     if (DiscardLeft && (op2->Pt.X != Pt.X)) op2 = op2->Next;
-    op2b = DupOutPt(op2, !DiscardLeft);
+    op2b = DupOutPt(op2, !DiscardLeft, manager);
     if (op2b->Pt != Pt)
     {
       op2 = op2b;
       op2->Pt = Pt;
-      op2b = DupOutPt(op2, !DiscardLeft);
+      op2b = DupOutPt(op2, !DiscardLeft, manager);
     };
   } else
   {
@@ -3459,12 +3577,12 @@ bool JoinHorz(OutPt* op1, OutPt* op1b, OutPt* op2, OutPt* op2b,
       op2->Next->Pt.X <= op2->Pt.X && op2->Next->Pt.Y == Pt.Y) 
         op2 = op2->Next;
     if (!DiscardLeft && (op2->Pt.X != Pt.X)) op2 = op2->Next;
-    op2b = DupOutPt(op2, DiscardLeft);
+    op2b = DupOutPt(op2, DiscardLeft, manager);
     if (op2b->Pt != Pt)
     {
       op2 = op2b;
       op2->Pt = Pt;
-      op2b = DupOutPt(op2, DiscardLeft);
+      op2b = DupOutPt(op2, DiscardLeft, manager);
     };
   };
 
@@ -3516,8 +3634,8 @@ bool Clipper::JoinPoints(Join *j, OutRec* outRec1, OutRec* outRec2)
     if (reverse1 == reverse2) return false;
     if (reverse1)
     {
-      op1b = DupOutPt(op1, false);
-      op2b = DupOutPt(op2, true);
+      op1b = DupOutPt(op1, false, manager);
+      op2b = DupOutPt(op2, true, manager);
       op1->Prev = op2;
       op2->Next = op1;
       op1b->Next = op2b;
@@ -3527,8 +3645,8 @@ bool Clipper::JoinPoints(Join *j, OutRec* outRec1, OutRec* outRec2)
       return true;
     } else
     {
-      op1b = DupOutPt(op1, true);
-      op2b = DupOutPt(op2, false);
+      op1b = DupOutPt(op1, true, manager);
+      op2b = DupOutPt(op2, false, manager);
       op1->Next = op2;
       op2->Prev = op1;
       op1b->Prev = op2b;
@@ -3584,7 +3702,7 @@ bool Clipper::JoinPoints(Join *j, OutRec* outRec1, OutRec* outRec2)
       Pt = op2b->Pt; DiscardLeftSide = (op2b->Pt.X > op2->Pt.X);
     }
     j->OutPt1 = op1; j->OutPt2 = op2;
-    return JoinHorz(op1, op1b, op2, op2b, Pt, DiscardLeftSide);
+    return JoinHorz(op1, op1b, op2, op2b, Pt, DiscardLeftSide, manager);
   } else
   {
     //nb: For non-horizontal joins ...
@@ -3620,8 +3738,8 @@ bool Clipper::JoinPoints(Join *j, OutRec* outRec1, OutRec* outRec2)
 
     if (Reverse1)
     {
-      op1b = DupOutPt(op1, false);
-      op2b = DupOutPt(op2, true);
+      op1b = DupOutPt(op1, false, manager);
+      op2b = DupOutPt(op2, true, manager);
       op1->Prev = op2;
       op2->Next = op1;
       op1b->Next = op2b;
@@ -3631,8 +3749,8 @@ bool Clipper::JoinPoints(Join *j, OutRec* outRec1, OutRec* outRec2)
       return true;
     } else
     {
-      op1b = DupOutPt(op1, true);
-      op2b = DupOutPt(op2, false);
+      op1b = DupOutPt(op1, true, manager);
+      op2b = DupOutPt(op2, false, manager);
       op1->Next = op2;
       op2->Prev = op1;
       op1b->Prev = op2b;
@@ -3813,8 +3931,7 @@ DoublePoint GetUnitNormal(const IntPoint &pt1, const IntPoint &pt2)
 //------------------------------------------------------------------------------
 // ClipperOffset class
 //------------------------------------------------------------------------------
-
-ClipperOffset::ClipperOffset(double miterLimit, double arcTolerance)
+ClipperOffset::ClipperOffset(CLIPPER_MMANAGER &_manager, double miterLimit, double arcTolerance) : allocDoublePoint(_manager.get_allocator<DoublePoint>()), allocPolyNode(_manager.get_allocator<PolyNode>()), manager(_manager), m_normals(allocDoublePoint), m_polyNodes(allocPolyNode)
 {
   this->MiterLimit = miterLimit;
   this->ArcTolerance = arcTolerance;
@@ -3830,10 +3947,23 @@ ClipperOffset::~ClipperOffset()
 
 void ClipperOffset::Clear()
 {
-  for (int i = 0; i < m_polyNodes.ChildCount(); ++i)
-    delete m_polyNodes.Childs[i];
+  if (CLIPPER_MMANAGER::useDelete) {
+    for (int i = 0; i < m_polyNodes.ChildCount(); ++i) delete m_polyNodes.Childs[i];
+  } else {
+    //this is to avoid memory leaks (PolyNode includes objects with two potentially different allocators)
+    for (int i = 0; i < m_polyNodes.ChildCount(); ++i) m_polyNodes.Childs[i]->~PolyNode();
+  }
   m_polyNodes.Childs.clear();
   m_lowest.X = -1;
+}
+//------------------------------------------------------------------------------
+
+void ClipperOffset::Reset() {
+    if (CLIPPER_MMANAGER::useReset) {
+        //re-create exactly in the same order as they are created in the construction phase
+        m_normals = std::vector<DoublePoint, CLIPPER_ALLOCATOR<DoublePoint> >(allocDoublePoint);
+        m_polyNodes.Childs = PolyNodes(allocPolyNode);
+    }
 }
 //------------------------------------------------------------------------------
 
@@ -3841,7 +3971,12 @@ void ClipperOffset::AddPath(const Path& path, JoinType joinType, EndType endType
 {
   int highI = (int)path.size() - 1;
   if (highI < 0) return;
-  PolyNode* newNode = new PolyNode();
+  PolyNode* newNode;
+  if (CLIPPER_MMANAGER::usePlacementNew) {
+      newNode = new (manager.allocate(sizeof(PolyNode))) PolyNode(allocPolyNode);
+  } else {
+      newNode = new PolyNode(allocPolyNode);
+  }
   newNode->m_jointype = joinType;
   newNode->m_endtype = endType;
 
@@ -3862,7 +3997,9 @@ void ClipperOffset::AddPath(const Path& path, JoinType joinType, EndType endType
     }
   if (endType == etClosedPolygon && j < 2)
   {
-    delete newNode;
+    if (CLIPPER_MMANAGER::useDelete) delete newNode;
+    //this is to avoid memory leaks (PolyNode includes objects with two potentially different allocators)
+    else                             newNode->~PolyNode();
     return;
   }
   m_polyNodes.AddChild(*newNode);
@@ -3884,6 +4021,8 @@ void ClipperOffset::AddPath(const Path& path, JoinType joinType, EndType endType
 
 void ClipperOffset::AddPaths(const Paths& paths, JoinType joinType, EndType endType)
 {
+  //this resereve() makes sense because (almost always) there is only one call to this function before doing the Execute()
+  m_polyNodes.Childs.reserve(m_polyNodes.Childs.size()+paths.size());
   for (Paths::size_type i = 0; i < paths.size(); ++i)
     AddPath(paths[i], joinType, endType);
 }
@@ -3922,7 +4061,7 @@ void ClipperOffset::Execute(Paths& solution, double delta)
   DoOffset(delta);
   
   //now clean up 'corners' ...
-  Clipper clpr;
+  Clipper clpr(manager);
   clpr.AddPaths(m_destPolys, ptSubject, true);
   if (delta > 0)
   {
@@ -3952,7 +4091,7 @@ void ClipperOffset::Execute(PolyTree& solution, double delta)
   DoOffset(delta);
 
   //now clean up 'corners' ...
-  Clipper clpr;
+  Clipper clpr(manager);
   clpr.AddPaths(m_destPolys, ptSubject, true);
   if (delta > 0)
   {
@@ -4324,28 +4463,26 @@ void ReversePaths(Paths& p)
 }
 //------------------------------------------------------------------------------
 
-void SimplifyPolygon(const Path &in_poly, Paths &out_polys, PolyFillType fillType)
+void SimplifyPolygon(CLIPPER_MMANAGER &manager, const Path &in_poly, Paths &out_polys, PolyFillType fillType)
 {
-  Clipper c;
+  Clipper c(manager);
   c.StrictlySimple(true);
   c.AddPath(in_poly, ptSubject, true);
   c.Execute(ctUnion, out_polys, fillType, fillType);
 }
 //------------------------------------------------------------------------------
 
-void SimplifyPolygons(const Paths &in_polys, Paths &out_polys, PolyFillType fillType)
+void SimplifyPolygons(CLIPPER_MMANAGER &manager, const Paths &in_polys, Paths &out_polys, PolyFillType fillType)
 {
-  Clipper c;
+  Clipper c(manager);
   c.StrictlySimple(true);
   c.AddPaths(in_polys, ptSubject, true);
   c.Execute(ctUnion, out_polys, fillType, fillType);
 }
 //------------------------------------------------------------------------------
 
-void SimplifyPolygons(Paths &polys, PolyFillType fillType)
-{
-  SimplifyPolygons(polys, polys, fillType);
-}
+void SimplifyPolygons(CLIPPER_MMANAGER &manager, Paths &polys, PolyFillType fillType) { SimplifyPolygons(manager, polys, polys, fillType); }
+
 //------------------------------------------------------------------------------
 
 inline double DistanceSqrd(const IntPoint& pt1, const IntPoint& pt2)
@@ -4418,7 +4555,7 @@ OutPt* ExcludeOp(OutPt* op)
 }
 //------------------------------------------------------------------------------
 
-void CleanPolygon(const Path& in_poly, Path& out_poly, double distance)
+void CleanPolygon(CLIPPER_MMANAGER &manager, const Path& in_poly, Path& out_poly, double distance)
 {
   //distance = proximity in units/pixels below which vertices
   //will be stripped. Default ~= sqrt(2).
@@ -4431,7 +4568,13 @@ void CleanPolygon(const Path& in_poly, Path& out_poly, double distance)
     return;
   }
 
-  OutPt* outPts = new OutPt[size];
+  OutPt* outPts;
+  if (CLIPPER_MMANAGER::usePlacementNew) {
+      outPts = new (manager.allocate(sizeof(OutPt)*size)) OutPt[size];
+  } else {
+      outPts = new OutPt[size];
+  }
+
   for (size_t i = 0; i < size; ++i)
   {
     outPts[i].Pt = in_poly[i];
@@ -4474,28 +4617,23 @@ void CleanPolygon(const Path& in_poly, Path& out_poly, double distance)
     out_poly[i] = op->Pt;
     op = op->Next;
   }
-  delete [] outPts;
+  if (CLIPPER_MMANAGER::useDelete) delete[] outPts;
 }
 //------------------------------------------------------------------------------
 
-void CleanPolygon(Path& poly, double distance)
-{
-  CleanPolygon(poly, poly, distance);
-}
+void CleanPolygon(CLIPPER_MMANAGER &manager, Path& poly, double distance) { CleanPolygon(manager, poly, poly, distance); }
 //------------------------------------------------------------------------------
 
-void CleanPolygons(const Paths& in_polys, Paths& out_polys, double distance)
+void CleanPolygons(CLIPPER_MMANAGER &manager, const Paths& in_polys, Paths& out_polys, double distance)
 {
   out_polys.resize(in_polys.size());
   for (Paths::size_type i = 0; i < in_polys.size(); ++i)
-    CleanPolygon(in_polys[i], out_polys[i], distance);
+    CleanPolygon(manager, in_polys[i], out_polys[i], distance);
 }
 //------------------------------------------------------------------------------
 
-void CleanPolygons(Paths& polys, double distance)
-{
-  CleanPolygons(polys, polys, distance);
-}
+void CleanPolygons(CLIPPER_MMANAGER &manager, Paths& polys, double distance) { CleanPolygons(manager, polys, polys, distance); }
+
 //------------------------------------------------------------------------------
 
 void Minkowski(const Path& poly, const Path& path, 
@@ -4542,10 +4680,10 @@ void Minkowski(const Path& poly, const Path& path,
 }
 //------------------------------------------------------------------------------
 
-void MinkowskiSum(const Path& pattern, const Path& path, Paths& solution, bool pathIsClosed)
+void MinkowskiSum(CLIPPER_MMANAGER &manager, const Path& pattern, const Path& path, Paths& solution, bool pathIsClosed)
 {
   Minkowski(pattern, path, solution, true, pathIsClosed);
-  Clipper c;
+  Clipper c(manager);
   c.AddPaths(solution, ptSubject, true);
   c.Execute(ctUnion, solution, pftNonZero, pftNonZero);
 }
@@ -4560,9 +4698,9 @@ void TranslatePath(const Path& input, Path& output, const IntPoint delta)
 }
 //------------------------------------------------------------------------------
 
-void MinkowskiSum(const Path& pattern, const Paths& paths, Paths& solution, bool pathIsClosed)
+void MinkowskiSum(CLIPPER_MMANAGER &manager, const Path& pattern, const Paths& paths, Paths& solution, bool pathIsClosed)
 {
-  Clipper c;
+  Clipper c(manager);
   for (size_t i = 0; i < paths.size(); ++i)
   {
     Paths tmp;
@@ -4579,10 +4717,10 @@ void MinkowskiSum(const Path& pattern, const Paths& paths, Paths& solution, bool
 }
 //------------------------------------------------------------------------------
 
-void MinkowskiDiff(const Path& poly1, const Path& poly2, Paths& solution)
+void MinkowskiDiff(CLIPPER_MMANAGER &manager, const Path& poly1, const Path& poly2, Paths& solution)
 {
   Minkowski(poly1, poly2, solution, false, true);
-  Clipper c;
+  Clipper c(manager);
   c.AddPaths(solution, ptSubject, true);
   c.Execute(ctUnion, solution, pftNonZero, pftNonZero);
 }

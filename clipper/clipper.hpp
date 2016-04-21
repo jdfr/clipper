@@ -49,15 +49,14 @@
 //use_deprecated: Enables temporary support for the obsolete functions
 //#define use_deprecated  
 
-#include <vector>
 #include <list>
 #include <set>
-#include <stdexcept>
-#include <cstring>
 #include <cstdlib>
-#include <ostream>
 #include <functional>
 #include <queue>
+#include <cstddef>
+#include "limits.h"
+#include "allocation_schemes.hpp"
 
 namespace ClipperLib {
 
@@ -130,14 +129,32 @@ enum InitOptions {ioReverseSolution = 1, ioStrictlySimple = 2, ioPreserveColline
 enum JoinType {jtSquare, jtRound, jtMiter};
 enum EndType {etClosedPolygon, etClosedLine, etOpenButt, etOpenSquare, etOpenRound};
 
-class PolyNode;
-typedef std::vector< PolyNode* > PolyNodes;
+/*ideally, for maximum flexibility, we would redefine most Clipper classes
+as templated on the memory manager, but that would be a *very* big change to
+the code, requiring either templates on user code all the way up the place
+where memory management is decided, or some form of type erasure (and if we
+are going to use type erasure, we may as well use virtual inheritance
+for cleaner code). Let's keep it simpler, at the cost of flexibility...*/
+#ifdef CLIPPER_USE_ARENA
+#  define CLIPPER_ALLOCATOR ArenaAllocator
+#  define CLIPPER_MMANAGER  ArenaMemoryManager
+#else
+#  define CLIPPER_ALLOCATOR std::allocator
+#  define CLIPPER_MMANAGER  SimpleMemoryManager
+#endif
 
-class PolyNode 
+class PolyNode;
+typedef std::vector< PolyNode*, CLIPPER_ALLOCATOR<PolyNode> > PolyNodes;
+
+class PolyNode
 { 
 public:
-    PolyNode();
-    virtual ~PolyNode(){};
+    PolyNode(CLIPPER_ALLOCATOR<PolyNode> &alloc) : Childs(alloc), Parent(0), Index(0), m_IsOpen(false) {};
+#ifndef CLIPPER_USE_ARENA
+    //This is convenient to avoid big headaches adapting Slic3r to use the new interface. Addmitedly, this amounts to cheating...
+    PolyNode() : Parent(0), Index(0), m_IsOpen(false) {}
+#endif
+    virtual ~PolyNode() {};
     Path Contour;
     PolyNodes Childs;
     PolyNode* Parent;
@@ -146,12 +163,12 @@ public:
     bool IsOpen() const;
     int ChildCount() const;
 private:
-    //PolyNode& operator =(PolyNode& other); 
-    unsigned Index; //node index in Parent.Childs
-    bool m_IsOpen;
     JoinType m_jointype;
     EndType m_endtype;
     PolyNode* GetNextSiblingUp() const;
+    //PolyNode& operator =(PolyNode& other); 
+    unsigned Index; //node index in Parent.Childs
+    bool m_IsOpen;
     void AddChild(PolyNode& child);
     friend class Clipper; //to access Index
     friend class ClipperOffset; 
@@ -159,14 +176,22 @@ private:
 
 class PolyTree: public PolyNode
 { 
+protected:
 public:
+    PolyTree(CLIPPER_ALLOCATOR<PolyNode> &alloc) : PolyNode(alloc), AllNodes(alloc) {}
+#ifndef CLIPPER_USE_ARENA
+    //This is convenient to avoid big headaches adapting Slic3r to use the new interface. Addmitedly, this amounts to cheating...
+    PolyTree(CLIPPER_MMANAGER &manager) {}
+    PolyTree() {}
+#endif
     ~PolyTree(){ Clear(); };
     PolyNode* GetFirst() const;
     void Clear();
+    void Reset();
     int Total() const;
 private:
-  //PolyTree& operator =(PolyTree& other);
-  PolyNodes AllNodes;
+    //PolyTree& operator =(PolyTree& other);
+    PolyNodes AllNodes;
     friend class Clipper; //to access AllNodes
 };
 
@@ -174,18 +199,18 @@ bool Orientation(const Path &poly);
 double Area(const Path &poly);
 int PointInPolygon(const IntPoint &pt, const Path &path);
 
-void SimplifyPolygon(const Path &in_poly, Paths &out_polys, PolyFillType fillType = pftEvenOdd);
-void SimplifyPolygons(const Paths &in_polys, Paths &out_polys, PolyFillType fillType = pftEvenOdd);
-void SimplifyPolygons(Paths &polys, PolyFillType fillType = pftEvenOdd);
+void SimplifyPolygon(CLIPPER_MMANAGER &manager, const Path &in_poly, Paths &out_polys, PolyFillType fillType = pftEvenOdd);
+void SimplifyPolygons(CLIPPER_MMANAGER &manager, const Paths &in_polys, Paths &out_polys, PolyFillType fillType = pftEvenOdd);
+void SimplifyPolygons(CLIPPER_MMANAGER &manager, Paths &polys, PolyFillType fillType = pftEvenOdd);
 
-void CleanPolygon(const Path& in_poly, Path& out_poly, double distance = 1.415);
-void CleanPolygon(Path& poly, double distance = 1.415);
-void CleanPolygons(const Paths& in_polys, Paths& out_polys, double distance = 1.415);
-void CleanPolygons(Paths& polys, double distance = 1.415);
+void CleanPolygon(CLIPPER_MMANAGER &manager, const Path& in_poly, Path& out_poly, double distance = 1.415);
+void CleanPolygon(CLIPPER_MMANAGER &manager, Path& poly, double distance = 1.415);
+void CleanPolygons(CLIPPER_MMANAGER &manager, const Paths& in_polys, Paths& out_polys, double distance = 1.415);
+void CleanPolygons(CLIPPER_MMANAGER &manager, Paths& polys, double distance = 1.415);
 
-void MinkowskiSum(const Path& pattern, const Path& path, Paths& solution, bool pathIsClosed);
-void MinkowskiSum(const Path& pattern, const Paths& paths, Paths& solution, bool pathIsClosed);
-void MinkowskiDiff(const Path& poly1, const Path& poly2, Paths& solution);
+void MinkowskiSum(CLIPPER_MMANAGER &manager, const Path& pattern, const Path& path, Paths& solution, bool pathIsClosed);
+void MinkowskiSum(CLIPPER_MMANAGER &manager, const Path& pattern, const Paths& paths, Paths& solution, bool pathIsClosed);
+void MinkowskiDiff(CLIPPER_MMANAGER &manager, const Path& poly1, const Path& poly2, Paths& solution);
 
 void PolyTreeToPaths(const PolyTree& polytree, Paths& paths);
 void ClosedPathsFromPolyTree(const PolyTree& polytree, Paths& paths);
@@ -211,10 +236,10 @@ struct OutPt;
 struct OutRec;
 struct Join;
 
-typedef std::vector < OutRec* > PolyOutList;
-typedef std::vector < TEdge* > EdgeList;
-typedef std::vector < Join* > JoinList;
-typedef std::vector < IntersectNode* > IntersectList;
+typedef std::vector < OutRec*,        CLIPPER_ALLOCATOR<OutRec*> >          PolyOutList;
+typedef std::vector < TEdge*,         CLIPPER_ALLOCATOR<TEdge*> >              EdgeList;
+typedef std::vector < Join*,          CLIPPER_ALLOCATOR<Join*> >               JoinList;
+typedef std::vector < IntersectNode*, CLIPPER_ALLOCATOR<IntersectNode*> > IntersectList;
 
 //------------------------------------------------------------------------------
 
@@ -224,7 +249,7 @@ typedef std::vector < IntersectNode* > IntersectList;
 class ClipperBase
 {
 public:
-  ClipperBase();
+  ClipperBase(CLIPPER_MMANAGER &_manager);
   virtual ~ClipperBase();
   virtual bool AddPath(const Path &pg, PolyType PolyTyp, bool Closed);
   bool AddPaths(const Paths &ppg, PolyType PolyTyp, bool Closed);
@@ -232,10 +257,17 @@ public:
   IntRect GetBounds();
   bool PreserveCollinear() {return m_PreserveCollinear;};
   void PreserveCollinear(bool value) {m_PreserveCollinear = value;};
+  //these allocators are required because we need allocator references in the initialization lists (visual studio is lenient when passing objects instead of references, but gcc isn't)
+  CLIPPER_ALLOCATOR<PolyNode>     allocPolyNode;
+  CLIPPER_ALLOCATOR<TEdge>        allocTEdge;
+  CLIPPER_ALLOCATOR<LocalMinimum> allocLocalMinimum;
+  CLIPPER_ALLOCATOR<OutRec>       allocOutRec;
+  CLIPPER_ALLOCATOR<cInt>         alloccInt;
+  CLIPPER_MMANAGER &manager;
 protected:
   void DisposeLocalMinimaList();
   TEdge* AddBoundsToLML(TEdge *e, bool IsClosed);
-  virtual void Reset();
+  virtual void ResetForExecute();
   TEdge* ProcessBound(TEdge* E, bool IsClockwise);
   void InsertScanbeam(const cInt Y);
   bool PopScanbeam(cInt &Y);
@@ -248,7 +280,7 @@ protected:
   void DeleteFromAEL(TEdge *e);
   void UpdateEdgeIntoAEL(TEdge *&e);
 
-  typedef std::vector<LocalMinimum> MinimaList;
+  typedef std::vector<LocalMinimum, CLIPPER_ALLOCATOR<LocalMinimum> > MinimaList;
   MinimaList::iterator m_CurrentLM;
   MinimaList           m_MinimaList;
 
@@ -259,7 +291,7 @@ protected:
   PolyOutList       m_PolyOuts;
   TEdge           *m_ActiveEdges;
 
-  typedef std::priority_queue<cInt> ScanbeamList;
+  typedef std::priority_queue<cInt, std::vector<cInt, CLIPPER_ALLOCATOR<cInt> > > ScanbeamList;
   ScanbeamList     m_Scanbeam;
 };
 //------------------------------------------------------------------------------
@@ -267,7 +299,7 @@ protected:
 class Clipper : public virtual ClipperBase
 {
 public:
-  Clipper(int initOptions = 0);
+  Clipper(CLIPPER_MMANAGER &_manager, int initOptions = 0);
   bool Execute(ClipType clipType,
       Paths &solution,
       PolyFillType fillType = pftEvenOdd);
@@ -282,6 +314,7 @@ public:
       PolyTree &polytree,
       PolyFillType subjFillType,
       PolyFillType clipFillType);
+  void Reset();
   bool ReverseSolution() { return m_ReverseOutput; };
   void ReverseSolution(bool value) {m_ReverseOutput = value;};
   bool StrictlySimple() {return m_StrictSimple;};
@@ -290,6 +323,9 @@ public:
 #ifdef use_xyz
   void ZFillFunction(ZFillCallback zFillFunc);
 #endif
+  //these allocators are required because we need allocator references in the initialization lists (visual studio is lenient when passing objects instead of references, but gcc isn't)
+  CLIPPER_ALLOCATOR<Join> allocJoin;
+  CLIPPER_ALLOCATOR<IntersectNode> allocIntersectNode;
 protected:
   virtual bool ExecuteInternal();
 private:
@@ -297,7 +333,7 @@ private:
   JoinList         m_GhostJoins;
   IntersectList    m_IntersectList;
   ClipType         m_ClipType;
-  typedef std::list<cInt> MaximaList;
+  typedef std::list<cInt, CLIPPER_ALLOCATOR<cInt> > MaximaList;
   MaximaList       m_Maxima;
   TEdge           *m_SortedEdges;
   bool             m_ExecuteLocked;
@@ -364,20 +400,25 @@ private:
 class ClipperOffset 
 {
 public:
-  ClipperOffset(double miterLimit = 2.0, double roundPrecision = 0.25);
+  ClipperOffset(CLIPPER_MMANAGER &_manager, double miterLimit = 2.0, double roundPrecision = 0.25);
   ~ClipperOffset();
   void AddPath(const Path& path, JoinType joinType, EndType endType);
   void AddPaths(const Paths& paths, JoinType joinType, EndType endType);
   void Execute(Paths& solution, double delta);
   void Execute(PolyTree& solution, double delta);
   void Clear();
+  void Reset();
   double MiterLimit;
   double ArcTolerance;
+  //these allocators are required because we need allocator references in the initialization lists (visual studio is lenient when passing objects instead of references, but gcc isn't)
+  CLIPPER_ALLOCATOR<DoublePoint> allocDoublePoint;
+  CLIPPER_ALLOCATOR<PolyNode>    allocPolyNode;
+  CLIPPER_MMANAGER &manager;
 private:
   Paths m_destPolys;
   Path m_srcPoly;
   Path m_destPoly;
-  std::vector<DoublePoint> m_normals;
+  std::vector<DoublePoint, CLIPPER_ALLOCATOR<DoublePoint> > m_normals;
   double m_delta, m_sinA, m_sin, m_cos;
   double m_miterLim, m_StepsPerRad;
   IntPoint m_lowest;
@@ -390,6 +431,17 @@ private:
   void DoMiter(int j, int k, double r);
   void DoRound(int j, int k);
 };
+//------------------------------------------------------------------------------
+
+template<typename CLIPPER_OBJECT> void ResetWithManager(CLIPPER_OBJECT &obj, PolyTree *pt = NULL) {
+    if (pt != NULL) pt->Clear();
+    obj.Reset();
+    obj.manager.reset();
+    /*after resetting the manager, we need to do this *again*, because in some implementations
+    STL containers may allocate storage for their state variables apart from the dynamic array.*/
+    obj.Reset();
+    if (pt != NULL) pt->Reset();
+}
 //------------------------------------------------------------------------------
 
 class clipperException : public std::exception

@@ -6,4 +6,9 @@ Main differences:
 
 -simple IO functions for ClipperLib::Paths and related types are added in a separate file
 
+-it is patched to optionally use a very simple and potentially very fast custom allocator instead of std::allocator.
+PLEASE NOTE: this feature breaks drop-in compatibility with he original ClipperLib, because the custom allocator
+is not default-constructible and the underlying infrastructure must be cleaned up after each clipping operation.
+However, adaptation should require only minimal changes for most applications.
+
 Please note: as the original ClipperLib, this is intended to be source-included (rather than linked) in other projects
