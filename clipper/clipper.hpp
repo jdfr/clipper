@@ -143,6 +143,8 @@ for cleaner code). Let's keep it simpler, at the cost of flexibility...*/
 #  define CLIPPER_MMANAGER  SimpleMemoryManager
 #endif
 
+class Clipper;
+class ClipperOffset;
 class PolyNode;
 typedef std::vector< PolyNode*, CLIPPER_ALLOCATOR<PolyNode> > PolyNodes;
 
@@ -152,7 +154,7 @@ public:
     PolyNode(CLIPPER_ALLOCATOR<PolyNode> &alloc) : Childs(alloc), Parent(0), Index(0), m_IsOpen(false) {};
 #ifndef CLIPPER_USE_ARENA
     //This is convenient to avoid big headaches adapting Slic3r to use the new interface. Addmitedly, this amounts to cheating...
-    PolyNode() : Parent(0), Index(0), m_IsOpen(false) {}
+    PolyNode()                                   :                Parent(0), Index(0), m_IsOpen(false) {};
 #endif
     virtual ~PolyNode() {};
     Path Contour;
@@ -178,10 +180,11 @@ class PolyTree: public PolyNode
 { 
 protected:
 public:
-    PolyTree(CLIPPER_ALLOCATOR<PolyNode> &alloc) : PolyNode(alloc), AllNodes(alloc) {}
+    PolyTree(CLIPPER_ALLOCATOR<PolyNode> &alloc);
+    PolyTree(Clipper       &obj);
+    PolyTree(ClipperOffset &obj);
 #ifndef CLIPPER_USE_ARENA
     //This is convenient to avoid big headaches adapting Slic3r to use the new interface. Addmitedly, this amounts to cheating...
-    PolyTree(CLIPPER_MMANAGER &manager) {}
     PolyTree() {}
 #endif
     ~PolyTree(){ Clear(); };
@@ -257,14 +260,14 @@ public:
   IntRect GetBounds();
   bool PreserveCollinear() {return m_PreserveCollinear;};
   void PreserveCollinear(bool value) {m_PreserveCollinear = value;};
+  CLIPPER_MMANAGER &manager;
+protected:
   //these allocators are required because we need allocator references in the initialization lists (visual studio is lenient when passing objects instead of references, but gcc isn't)
   CLIPPER_ALLOCATOR<PolyNode>     allocPolyNode;
   CLIPPER_ALLOCATOR<TEdge>        allocTEdge;
   CLIPPER_ALLOCATOR<LocalMinimum> allocLocalMinimum;
   CLIPPER_ALLOCATOR<OutRec>       allocOutRec;
   CLIPPER_ALLOCATOR<cInt>         alloccInt;
-  CLIPPER_MMANAGER &manager;
-protected:
   void DisposeLocalMinimaList();
   TEdge* AddBoundsToLML(TEdge *e, bool IsClosed);
   virtual void ResetForExecute();
@@ -296,7 +299,7 @@ protected:
 };
 //------------------------------------------------------------------------------
 
-class Clipper : public virtual ClipperBase
+class Clipper : public ClipperBase
 {
 public:
   Clipper(CLIPPER_MMANAGER &_manager, int initOptions = 0);
@@ -323,10 +326,10 @@ public:
 #ifdef use_xyz
   void ZFillFunction(ZFillCallback zFillFunc);
 #endif
+protected:
   //these allocators are required because we need allocator references in the initialization lists (visual studio is lenient when passing objects instead of references, but gcc isn't)
   CLIPPER_ALLOCATOR<Join> allocJoin;
   CLIPPER_ALLOCATOR<IntersectNode> allocIntersectNode;
-protected:
   virtual bool ExecuteInternal();
 private:
   JoinList         m_Joins;
@@ -394,6 +397,7 @@ private:
 #ifdef use_xyz
   void SetZ(IntPoint& pt, TEdge& e1, TEdge& e2);
 #endif
+  friend class PolyTree;
 };
 //------------------------------------------------------------------------------
 
@@ -410,11 +414,11 @@ public:
   void Reset();
   double MiterLimit;
   double ArcTolerance;
+  CLIPPER_MMANAGER &manager;
+private:
   //these allocators are required because we need allocator references in the initialization lists (visual studio is lenient when passing objects instead of references, but gcc isn't)
   CLIPPER_ALLOCATOR<DoublePoint> allocDoublePoint;
   CLIPPER_ALLOCATOR<PolyNode>    allocPolyNode;
-  CLIPPER_MMANAGER &manager;
-private:
   Paths m_destPolys;
   Path m_srcPoly;
   Path m_destPoly;
@@ -430,17 +434,25 @@ private:
   void DoSquare(int j, int k);
   void DoMiter(int j, int k, double r);
   void DoRound(int j, int k);
+  friend class PolyTree;
 };
 //------------------------------------------------------------------------------
 
-template<typename CLIPPER_OBJECT> void ResetWithManager(CLIPPER_OBJECT &obj, PolyTree *pt = NULL) {
-    if (pt != NULL) pt->Clear();
-    obj.Reset();
-    obj.manager.reset();
-    /*after resetting the manager, we need to do this *again*, because in some implementations
-    STL containers may allocate storage for their state variables apart from the dynamic array.*/
-    obj.Reset();
-    if (pt != NULL) pt->Reset();
+//the constructors using Cliper and ClipperOffset cannot be defined at declaration time
+inline PolyTree::PolyTree(CLIPPER_ALLOCATOR<PolyNode> &alloc) : PolyNode(alloc),             AllNodes(alloc) {}
+inline PolyTree::PolyTree(Clipper       &obj)                 : PolyNode(obj.allocPolyNode), AllNodes(obj.allocPolyNode) {}
+inline PolyTree::PolyTree(ClipperOffset &obj)                 : PolyNode(obj.allocPolyNode), AllNodes(obj.allocPolyNode) {}
+
+template<typename CLIPPER_OBJECT> void ClipperEndOperation(CLIPPER_OBJECT &obj, PolyTree *pt = NULL) {
+    if (CLIPPER_MMANAGER::useReset) {
+        if (pt != NULL) pt->Clear();
+        obj.Reset();
+        obj.manager.reset();
+        /*after resetting the manager, we need to do this *again*, because in some implementations
+        STL containers may allocate storage for their state variables apart from the dynamic array.*/
+        obj.Reset();
+        if (pt != NULL) pt->Reset();
+    }
 }
 //------------------------------------------------------------------------------
 

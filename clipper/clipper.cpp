@@ -926,7 +926,7 @@ bool HorzSegmentsOverlap(cInt seg1a, cInt seg1b, cInt seg2a, cInt seg2b)
 // ClipperBase class methods ...
 //------------------------------------------------------------------------------
 
-ClipperBase::ClipperBase(CLIPPER_MMANAGER &_manager) : allocPolyNode(_manager.get_allocator<PolyNode>()), allocTEdge(_manager.get_allocator<TEdge>()), allocLocalMinimum(_manager.get_allocator<LocalMinimum>()), allocOutRec(_manager.get_allocator<OutRec>()), alloccInt(_manager.get_allocator<cInt>()), manager(_manager), m_MinimaList(allocLocalMinimum), m_edges(allocTEdge), m_PolyOuts(allocOutRec), m_Scanbeam(std::less<cInt>(), std::vector<cInt, CLIPPER_ALLOCATOR<cInt> >(alloccInt)) //constructor
+ClipperBase::ClipperBase(CLIPPER_MMANAGER &_manager) : manager(_manager), allocPolyNode(_manager.get_allocator<PolyNode>()), allocTEdge(_manager.get_allocator<TEdge>()), allocLocalMinimum(_manager.get_allocator<LocalMinimum>()), allocOutRec(_manager.get_allocator<OutRec>()), alloccInt(_manager.get_allocator<cInt>()), m_MinimaList(allocLocalMinimum), m_edges(allocTEdge), m_PolyOuts(allocOutRec), m_Scanbeam(std::less<cInt>(), std::vector<cInt, CLIPPER_ALLOCATOR<cInt> >(alloccInt)) //constructor
 {
   m_CurrentLM = m_MinimaList.begin(); //begin() == end() here
   m_UseFullRange = false;
@@ -3931,7 +3931,7 @@ DoublePoint GetUnitNormal(const IntPoint &pt1, const IntPoint &pt2)
 //------------------------------------------------------------------------------
 // ClipperOffset class
 //------------------------------------------------------------------------------
-ClipperOffset::ClipperOffset(CLIPPER_MMANAGER &_manager, double miterLimit, double arcTolerance) : allocDoublePoint(_manager.get_allocator<DoublePoint>()), allocPolyNode(_manager.get_allocator<PolyNode>()), manager(_manager), m_normals(allocDoublePoint), m_polyNodes(allocPolyNode)
+ClipperOffset::ClipperOffset(CLIPPER_MMANAGER &_manager, double miterLimit, double arcTolerance) : manager(_manager), allocDoublePoint(_manager.get_allocator<DoublePoint>()), allocPolyNode(_manager.get_allocator<PolyNode>()), m_normals(allocDoublePoint), m_polyNodes(allocPolyNode)
 {
   this->MiterLimit = miterLimit;
   this->ArcTolerance = arcTolerance;
