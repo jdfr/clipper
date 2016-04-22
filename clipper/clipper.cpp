@@ -147,21 +147,11 @@ void PolyTree::Clear() {
   if (CLIPPER_MMANAGER::useDelete) {
       for (PolyNodes::size_type i = 0; i < AllNodes.size(); ++i) delete AllNodes[i];
   } else {
-      //this is to avoid memory leaks (PolyNode includes objects with two potentially different allocators)
+      //this is to avoid memory leaks (PolyNode includes STL objects)
       for (PolyNodes::size_type i = 0; i < AllNodes.size(); ++i) AllNodes[i]->~PolyNode();
   }
   AllNodes.resize(0);
   Childs.resize(0);
-}
-//------------------------------------------------------------------------------
-
-void PolyTree::Reset() {
-  if (CLIPPER_MMANAGER::useReset) {
-    PolyNodes::allocator_type allocator = AllNodes.get_allocator();
-    //re-create exactly in the same order as they are created in the construction phase
-    Childs   = PolyNodes(allocator);
-    AllNodes = PolyNodes(allocator);
-  }
 }
 //------------------------------------------------------------------------------
 
@@ -926,7 +916,7 @@ bool HorzSegmentsOverlap(cInt seg1a, cInt seg1b, cInt seg2a, cInt seg2b)
 // ClipperBase class methods ...
 //------------------------------------------------------------------------------
 
-ClipperBase::ClipperBase(CLIPPER_MMANAGER &_manager) : manager(_manager), allocPolyNode(_manager.get_allocator<PolyNode>()), allocTEdge(_manager.get_allocator<TEdge>()), allocLocalMinimum(_manager.get_allocator<LocalMinimum>()), allocOutRec(_manager.get_allocator<OutRec>()), alloccInt(_manager.get_allocator<cInt>()), m_MinimaList(allocLocalMinimum), m_edges(allocTEdge), m_PolyOuts(allocOutRec), m_Scanbeam(std::less<cInt>(), std::vector<cInt, CLIPPER_ALLOCATOR<cInt> >(alloccInt)) //constructor
+ClipperBase::ClipperBase(CLIPPER_MMANAGER &_manager) : manager(_manager) //constructor
 {
   m_CurrentLM = m_MinimaList.begin(); //begin() == end() here
   m_UseFullRange = false;
@@ -1254,8 +1244,6 @@ bool ClipperBase::AddPath(const Path &pg, PolyType PolyTyp, bool Closed)
     else locMin.LeftBound->WindDelta = 1;
     locMin.RightBound->WindDelta = -locMin.LeftBound->WindDelta;
 
-    //here we may do m_MinimaList.reserve(m_MinimaList.size() + VALUE_DERIVED_FROM(highI + 1));
-    
     E = ProcessBound(locMin.LeftBound, leftBoundIsForward);
     if (E->OutIdx == Skip) E = ProcessBound(E, leftBoundIsForward);
 
@@ -1299,18 +1287,13 @@ void ClipperBase::Clear()
 
 //------------------------------------------------------------------------------
 
-void ClipperBase::ResetForExecute()
+void ClipperBase::Reset()
 {
   m_CurrentLM = m_MinimaList.begin();
   if (m_CurrentLM == m_MinimaList.end()) return; //ie nothing to process
   std::sort(m_MinimaList.begin(), m_MinimaList.end(), LocMinSorter());
 
-  /*the value here should just an educated guess, to avoid as much reallocations of m_Scanbeam's container as possible, because
-  incremental resizing of std::vector<T, ArenaAllocator<T> > uses O(N^2) memory, where N is the final m_Scanbeam.size()) */
-  //std::vector<cInt, ArenaAllocator<cInt> > scanBeamContainer(ArenaAllocator<cInt>(arena));
-  //scanBeamContainer.reserve(VALUE_ESTIMATED_FROM_INPUT_PATHS);
-  //m_Scanbeam = ScanbeamList(std::less<cInt>(), scanBeamContainer); //clears/resets priority_queue
-  m_Scanbeam = ScanbeamList(std::less<cInt>(), std::vector<cInt, CLIPPER_ALLOCATOR<cInt> >(alloccInt)); //clears/resets priority_queue
+  m_Scanbeam = ScanbeamList(); //clears/resets priority_queue
   //reset all edges ...
   for (MinimaList::iterator lm = m_MinimaList.begin(); lm != m_MinimaList.end(); ++lm)
   {
@@ -1536,7 +1519,7 @@ bool ClipperBase::LocalMinimaPending()
 // TClipper methods ...
 //------------------------------------------------------------------------------
 
-Clipper::Clipper(CLIPPER_MMANAGER &_manager, int initOptions) : ClipperBase(_manager), allocJoin(_manager.get_allocator<Join>()), allocIntersectNode(_manager.get_allocator<IntersectNode>()), m_Joins(allocJoin), m_GhostJoins(allocJoin), m_IntersectList(allocIntersectNode), m_Maxima(alloccInt) //constructor
+Clipper::Clipper(CLIPPER_MMANAGER &_manager, int initOptions) : ClipperBase(_manager) //constructor
 {
   m_ExecuteLocked = false;
   m_UseFullRange = false;
@@ -1607,21 +1590,6 @@ bool Clipper::Execute(ClipType clipType, PolyTree& polytree,
 }
 //------------------------------------------------------------------------------
 
-void Clipper::Reset() {
-    if (CLIPPER_MMANAGER::useReset) {
-        //re-create exactly in the same order as they are created in the construction phase
-        m_MinimaList    = MinimaList(allocLocalMinimum);
-        m_edges         = EdgeList(     allocTEdge);
-        m_PolyOuts      = PolyOutList(  allocOutRec);
-        m_Scanbeam      = ScanbeamList(std::less<cInt>(), std::vector<cInt, CLIPPER_ALLOCATOR<cInt> >(alloccInt)); //clears/resets priority_queue
-        m_Joins         = JoinList(     allocJoin);
-        m_GhostJoins    = JoinList(     allocJoin);
-        m_IntersectList = IntersectList(allocIntersectNode);
-        m_Maxima        = MaximaList(   alloccInt);
-    }
-}
-//------------------------------------------------------------------------------
-
 void Clipper::FixHoleLinkage(OutRec &outrec)
 {
   //skip OutRecs that (a) contain outermost polygons or
@@ -1639,12 +1607,9 @@ void Clipper::FixHoleLinkage(OutRec &outrec)
 
 bool Clipper::ExecuteInternal()
 {
-  /*the value here should be an educated guess, to avoid as much reallocations of m_PolyOuts as possible, because
-  incremental resizing of std::vector<T, ArenaAllocator<T> > uses O(N^2) memory, where N is the final m_PolyOuts.size()) */
-  //m_PolyOuts.reserve(m_PolyOuts.size() + VALUE_ESTIMATED_FROM_INPUT_PATHS);
   bool succeeded = true;
   try {
-    ResetForExecute();
+    Reset();
     //m_Maxima = MaximaList(manager);
     m_Maxima.clear();
     m_SortedEdges = 0;
@@ -3117,38 +3082,6 @@ void Clipper::DoMaxima(TEdge *e)
 }
 //------------------------------------------------------------------------------
 
-//implement enable_if here (because this code must be compilable in C++03)
-template <bool B, class T = void> struct enable_if { typedef T type; };
-template         <class T>        struct enable_if<false, T> {};
-
-//this is necessary because most implementations of std::list::sort use temporary lists that do not get their allocators from the parent list,
-//so they require the allocator to be default-constructible, and this is not the case for ArenaAllocator...
-template<typename T, typename A> void list_sort(typename enable_if< CLIPPER_MMANAGER::allocator_default_constructible, std::list<T, A> >::type &list) { list.sort(); }
-template<typename T, typename A> void list_sort(typename enable_if<!CLIPPER_MMANAGER::allocator_default_constructible, std::list<T, A> >::type &list) {
-    if (!list.empty() && (++list.begin()!=list.end())) {
-        std::list<T, A> carry(list.get_allocator()), *fill, *idx;
-
-        std::vector<std::list<T, A> > vec(64, std::list<T, A>(list.get_allocator()));
-        fill = &vec.front();
-
-        do {
-            carry.splice(carry.begin(), list, list.begin());
-            for (idx = &vec.front(); idx != fill && !idx->empty(); ++idx) {
-                idx->merge(carry);
-                carry.swap(*idx);
-            }
-            carry.swap(*idx);
-            if (idx == fill) ++fill;
-        } while (!list.empty());
-
-        for (idx = &vec[1]; idx != fill; ++idx) {
-            idx->merge(*(idx - 1));
-        }
-        list.swap(*(fill - 1));
-    }
-}
-
-
 void Clipper::ProcessEdgesAtTopOfScanbeam(const cInt topY) {
     TEdge* e = m_ActiveEdges;
     while (e)
@@ -3208,7 +3141,7 @@ void Clipper::ProcessEdgesAtTopOfScanbeam(const cInt topY) {
   }
 
   //3. Process horizontals at the Top of the scanbeam ...
-  list_sort<cInt, CLIPPER_ALLOCATOR<cInt> >(m_Maxima);
+  m_Maxima.sort();
   ProcessHorizontals();
   m_Maxima.clear();
 
@@ -3367,9 +3300,9 @@ void Clipper::BuildResult2(PolyTree& polytree)
         FixHoleLinkage(*outRec);
         PolyNode* pn;
         if (CLIPPER_MMANAGER::usePlacementNew) {
-            pn = new (manager.allocate(sizeof(PolyNode))) PolyNode(allocPolyNode);
+            pn = new (manager.allocate(sizeof(PolyNode))) PolyNode;
         } else {
-            pn = new PolyNode(allocPolyNode);
+            pn = new PolyNode;
         }
             
         //nb: polytree takes ownership of all the PolyNodes
@@ -3931,7 +3864,7 @@ DoublePoint GetUnitNormal(const IntPoint &pt1, const IntPoint &pt2)
 //------------------------------------------------------------------------------
 // ClipperOffset class
 //------------------------------------------------------------------------------
-ClipperOffset::ClipperOffset(CLIPPER_MMANAGER &_manager, double miterLimit, double arcTolerance) : manager(_manager), allocDoublePoint(_manager.get_allocator<DoublePoint>()), allocPolyNode(_manager.get_allocator<PolyNode>()), m_normals(allocDoublePoint), m_polyNodes(allocPolyNode)
+ClipperOffset::ClipperOffset(CLIPPER_MMANAGER &_manager, double miterLimit, double arcTolerance) : manager(_manager)
 {
   this->MiterLimit = miterLimit;
   this->ArcTolerance = arcTolerance;
@@ -3950,20 +3883,11 @@ void ClipperOffset::Clear()
   if (CLIPPER_MMANAGER::useDelete) {
     for (int i = 0; i < m_polyNodes.ChildCount(); ++i) delete m_polyNodes.Childs[i];
   } else {
-    //this is to avoid memory leaks (PolyNode includes objects with two potentially different allocators)
+    //this is to avoid memory leaks (PolyNode includes STL objects)
     for (int i = 0; i < m_polyNodes.ChildCount(); ++i) m_polyNodes.Childs[i]->~PolyNode();
   }
   m_polyNodes.Childs.clear();
   m_lowest.X = -1;
-}
-//------------------------------------------------------------------------------
-
-void ClipperOffset::Reset() {
-    if (CLIPPER_MMANAGER::useReset) {
-        //re-create exactly in the same order as they are created in the construction phase
-        m_normals = std::vector<DoublePoint, CLIPPER_ALLOCATOR<DoublePoint> >(allocDoublePoint);
-        m_polyNodes.Childs = PolyNodes(allocPolyNode);
-    }
 }
 //------------------------------------------------------------------------------
 
@@ -3973,9 +3897,9 @@ void ClipperOffset::AddPath(const Path& path, JoinType joinType, EndType endType
   if (highI < 0) return;
   PolyNode* newNode;
   if (CLIPPER_MMANAGER::usePlacementNew) {
-      newNode = new (manager.allocate(sizeof(PolyNode))) PolyNode(allocPolyNode);
+      newNode = new (manager.allocate(sizeof(PolyNode))) PolyNode;
   } else {
-      newNode = new PolyNode(allocPolyNode);
+      newNode = new PolyNode;
   }
   newNode->m_jointype = joinType;
   newNode->m_endtype = endType;
@@ -3998,7 +3922,7 @@ void ClipperOffset::AddPath(const Path& path, JoinType joinType, EndType endType
   if (endType == etClosedPolygon && j < 2)
   {
     if (CLIPPER_MMANAGER::useDelete) delete newNode;
-    //this is to avoid memory leaks (PolyNode includes objects with two potentially different allocators)
+    //this is to avoid memory leaks (PolyNode includes STL objects)
     else                             newNode->~PolyNode();
     return;
   }

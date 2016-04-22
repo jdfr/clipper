@@ -20,13 +20,10 @@ public:
     void deallocate(void *p, size_t n)                     { delete[](char*)(p); }
     template<typename T>     T *allocate(size_t n)         { return   (T*)(allocate(sizeof(T)*n)); }
     template<typename T> void deallocate(T *p, size_t n)   { delete[](char*)(p); }
-    template<typename T> std::allocator<T> get_allocator() { return std::allocator<T>(); }
     void free() {}
     void reset() {}
 protected:
 };
-
-template<typename T> class ArenaAllocator;
 
 /*this is a dumb memory arena. It allocates memory as needeed, but never really frees
 it until it is reset, so depending on the workload it may require *a lot* of memory.
@@ -81,9 +78,8 @@ public:
         currentPointer = chunks[currentChunk];
         endPointer = currentPointer + chunkSize;
     }
-    template<typename T> ArenaAllocator<T> get_allocator() { return ArenaAllocator<T>(*this); }
     //will free all chunks EXCEPT the first one.
-    //Rationale: sucessful calls to ArenaAllocator::allocate(0) must return non-NULL pointers.
+    //Rationale: sucessful calls to allocate(0) must return non-NULL pointers.
     //Always having at least one chunk is the easiest way to guarantee it without handling the empty case
     void free() {
         for (std::vector<char *>::iterator chunk = chunks.begin() + 1; chunk != chunks.end(); ++chunk) {
@@ -98,47 +94,6 @@ protected:
     size_t currentChunk;
     char *currentPointer;
     char *endPointer;
-    template<typename T> friend class ArenaAllocator;
 };
-
-typedef std::vector<int>::const_pointer xxx;
-
-//PLEASE NOTE: the lifetime of any ArenaAllocator should NEVER surpass the lifetime of its ArenaMemoryManager
-template<typename T> class ArenaAllocator {
-public:
-    typedef T* pointer;
-    typedef const T* const_pointer;
-    typedef T& reference;
-    typedef const T& const_reference;
-    typedef size_t size_type;
-    typedef ptrdiff_t difference_type;
-    typedef T value_type;
-    template <typename U> ArenaAllocator(const ArenaAllocator<U>& other) : arena(other.arena) {}
-    //template <typename U> ArenaAllocator<T>& operator = (const ArenaAllocator<U>& other) { arena = other.arena; return *this; };
-    template <typename U> struct rebind  { typedef ArenaAllocator<U> other; };
-    T*     allocate(std::size_t n)       { return arena->allocate<T>(n); }
-    void deallocate(T* p, std::size_t n) {}
-    void construct(pointer p, const_reference val) { new ((void*)p) T(val); }
-    void destroy(  pointer p) { p->~T(); }
-    pointer       address(      reference x) const { return &x; }
-    const_pointer address(const_reference x) const { return &x; }
-    size_type max_size() const { return LLONG_MAX; }
-#ifdef CLIPPER_ALLOCATOR_CXX11 //the code must be compilable in C++03 (for Perl and Python)
-    typedef std::true_type propagate_on_container_copy_assignment;
-    typedef std::true_type propagate_on_container_move_assignment;
-    typedef std::true_type propagate_on_container_swap;
-    typedef std::true_type is_always_equal;
-#endif
-protected:
-    ArenaAllocator(ArenaMemoryManager &_arena) : arena(&_arena) {};
-    ArenaMemoryManager *arena;
-    friend class ArenaMemoryManager;
-    template <typename> friend class ArenaAllocator;
-    template <class V, class W> friend bool operator==(const ArenaAllocator<V>&, const ArenaAllocator<W>&);
-    template <class V, class W> friend bool operator!=(const ArenaAllocator<V>&, const ArenaAllocator<W>&);
-};
-
-template <class V, class W> bool operator==(const ArenaAllocator<V> &a, const ArenaAllocator<W> &b) { return a.arena == b.arena; }
-template <class V, class W> bool operator!=(const ArenaAllocator<V> &a, const ArenaAllocator<W> &b) { return a.arena != b.arena;; }
 
 #endif

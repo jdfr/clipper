@@ -136,26 +136,20 @@ where memory management is decided, or some form of type erasure (and if we
 are going to use type erasure, we may as well use virtual inheritance
 for cleaner code). Let's keep it simpler, at the cost of flexibility...*/
 #ifdef CLIPPER_USE_ARENA
-#  define CLIPPER_ALLOCATOR ArenaAllocator
 #  define CLIPPER_MMANAGER  ArenaMemoryManager
 #else
-#  define CLIPPER_ALLOCATOR std::allocator
 #  define CLIPPER_MMANAGER  SimpleMemoryManager
 #endif
 
 class Clipper;
 class ClipperOffset;
 class PolyNode;
-typedef std::vector< PolyNode*, CLIPPER_ALLOCATOR<PolyNode> > PolyNodes;
+typedef std::vector< PolyNode* > PolyNodes;
 
 class PolyNode
 { 
 public:
-    PolyNode(CLIPPER_ALLOCATOR<PolyNode> &alloc) : Childs(alloc), Parent(0), Index(0), m_IsOpen(false) {};
-#ifndef CLIPPER_USE_ARENA
-    //This is convenient to avoid big headaches adapting Slic3r to use the new interface. Addmitedly, this amounts to cheating...
-    PolyNode()                                   :                Parent(0), Index(0), m_IsOpen(false) {};
-#endif
+    PolyNode() : Parent(0), Index(0), m_IsOpen(false) {};
     virtual ~PolyNode() {};
     Path Contour;
     PolyNodes Childs;
@@ -180,17 +174,9 @@ class PolyTree: public PolyNode
 { 
 protected:
 public:
-    PolyTree(CLIPPER_ALLOCATOR<PolyNode> &alloc);
-    PolyTree(Clipper       &obj);
-    PolyTree(ClipperOffset &obj);
-#ifndef CLIPPER_USE_ARENA
-    //This is convenient to avoid big headaches adapting Slic3r to use the new interface. Addmitedly, this amounts to cheating...
-    PolyTree() {}
-#endif
     ~PolyTree(){ Clear(); };
     PolyNode* GetFirst() const;
     void Clear();
-    void Reset();
     int Total() const;
 private:
     //PolyTree& operator =(PolyTree& other);
@@ -239,10 +225,10 @@ struct OutPt;
 struct OutRec;
 struct Join;
 
-typedef std::vector < OutRec*,        CLIPPER_ALLOCATOR<OutRec*> >          PolyOutList;
-typedef std::vector < TEdge*,         CLIPPER_ALLOCATOR<TEdge*> >              EdgeList;
-typedef std::vector < Join*,          CLIPPER_ALLOCATOR<Join*> >               JoinList;
-typedef std::vector < IntersectNode*, CLIPPER_ALLOCATOR<IntersectNode*> > IntersectList;
+typedef std::vector < OutRec* > PolyOutList;
+typedef std::vector < TEdge* > EdgeList;
+typedef std::vector < Join* > JoinList;
+typedef std::vector < IntersectNode* > IntersectList;
 
 //------------------------------------------------------------------------------
 
@@ -262,15 +248,9 @@ public:
   void PreserveCollinear(bool value) {m_PreserveCollinear = value;};
   CLIPPER_MMANAGER &manager;
 protected:
-  //these allocators are required because we need allocator references in the initialization lists (visual studio is lenient when passing objects instead of references, but gcc isn't)
-  CLIPPER_ALLOCATOR<PolyNode>     allocPolyNode;
-  CLIPPER_ALLOCATOR<TEdge>        allocTEdge;
-  CLIPPER_ALLOCATOR<LocalMinimum> allocLocalMinimum;
-  CLIPPER_ALLOCATOR<OutRec>       allocOutRec;
-  CLIPPER_ALLOCATOR<cInt>         alloccInt;
   void DisposeLocalMinimaList();
   TEdge* AddBoundsToLML(TEdge *e, bool IsClosed);
-  virtual void ResetForExecute();
+  virtual void Reset();
   TEdge* ProcessBound(TEdge* E, bool IsClockwise);
   void InsertScanbeam(const cInt Y);
   bool PopScanbeam(cInt &Y);
@@ -283,7 +263,7 @@ protected:
   void DeleteFromAEL(TEdge *e);
   void UpdateEdgeIntoAEL(TEdge *&e);
 
-  typedef std::vector<LocalMinimum, CLIPPER_ALLOCATOR<LocalMinimum> > MinimaList;
+  typedef std::vector<LocalMinimum> MinimaList;
   MinimaList::iterator m_CurrentLM;
   MinimaList           m_MinimaList;
 
@@ -294,7 +274,7 @@ protected:
   PolyOutList       m_PolyOuts;
   TEdge           *m_ActiveEdges;
 
-  typedef std::priority_queue<cInt, std::vector<cInt, CLIPPER_ALLOCATOR<cInt> > > ScanbeamList;
+  typedef std::priority_queue<cInt, std::vector<cInt> > ScanbeamList;
   ScanbeamList     m_Scanbeam;
 };
 //------------------------------------------------------------------------------
@@ -317,7 +297,6 @@ public:
       PolyTree &polytree,
       PolyFillType subjFillType,
       PolyFillType clipFillType);
-  void Reset();
   bool ReverseSolution() { return m_ReverseOutput; };
   void ReverseSolution(bool value) {m_ReverseOutput = value;};
   bool StrictlySimple() {return m_StrictSimple;};
@@ -327,16 +306,13 @@ public:
   void ZFillFunction(ZFillCallback zFillFunc);
 #endif
 protected:
-  //these allocators are required because we need allocator references in the initialization lists (visual studio is lenient when passing objects instead of references, but gcc isn't)
-  CLIPPER_ALLOCATOR<Join> allocJoin;
-  CLIPPER_ALLOCATOR<IntersectNode> allocIntersectNode;
   virtual bool ExecuteInternal();
 private:
   JoinList         m_Joins;
   JoinList         m_GhostJoins;
   IntersectList    m_IntersectList;
   ClipType         m_ClipType;
-  typedef std::list<cInt, CLIPPER_ALLOCATOR<cInt> > MaximaList;
+  typedef std::list<cInt> MaximaList;
   MaximaList       m_Maxima;
   TEdge           *m_SortedEdges;
   bool             m_ExecuteLocked;
@@ -411,18 +387,14 @@ public:
   void Execute(Paths& solution, double delta);
   void Execute(PolyTree& solution, double delta);
   void Clear();
-  void Reset();
   double MiterLimit;
   double ArcTolerance;
   CLIPPER_MMANAGER &manager;
 private:
-  //these allocators are required because we need allocator references in the initialization lists (visual studio is lenient when passing objects instead of references, but gcc isn't)
-  CLIPPER_ALLOCATOR<DoublePoint> allocDoublePoint;
-  CLIPPER_ALLOCATOR<PolyNode>    allocPolyNode;
   Paths m_destPolys;
   Path m_srcPoly;
   Path m_destPoly;
-  std::vector<DoublePoint, CLIPPER_ALLOCATOR<DoublePoint> > m_normals;
+  std::vector<DoublePoint> m_normals;
   double m_delta, m_sinA, m_sin, m_cos;
   double m_miterLim, m_StepsPerRad;
   IntPoint m_lowest;
@@ -438,20 +410,9 @@ private:
 };
 //------------------------------------------------------------------------------
 
-//the constructors using Cliper and ClipperOffset cannot be defined at declaration time
-inline PolyTree::PolyTree(CLIPPER_ALLOCATOR<PolyNode> &alloc) : PolyNode(alloc),             AllNodes(alloc) {}
-inline PolyTree::PolyTree(Clipper       &obj)                 : PolyNode(obj.allocPolyNode), AllNodes(obj.allocPolyNode) {}
-inline PolyTree::PolyTree(ClipperOffset &obj)                 : PolyNode(obj.allocPolyNode), AllNodes(obj.allocPolyNode) {}
-
 template<typename CLIPPER_OBJECT> void ClipperEndOperation(CLIPPER_OBJECT &obj, PolyTree *pt = NULL) {
     if (CLIPPER_MMANAGER::useReset) {
-        if (pt != NULL) pt->Clear();
-        obj.Reset();
         obj.manager.reset();
-        /*after resetting the manager, we need to do this *again*, because in some implementations
-        STL containers may allocate storage for their state variables apart from the dynamic array.*/
-        obj.Reset();
-        if (pt != NULL) pt->Reset();
     }
 }
 //------------------------------------------------------------------------------
