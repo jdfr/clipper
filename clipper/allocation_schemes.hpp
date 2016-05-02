@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <sstream>
 #include <cstring>
+#include <stdio.h>
 
 /*this class is intended to have a common interface with ArenaMemoryManager,
 to avoid heavy use of template metaprogramming (which would require
@@ -36,7 +37,7 @@ public:
     static const bool useDelete                       = false;
     static const bool useReset                        = true;
     static const bool allocator_default_constructible = false;
-    ArenaMemoryManager(size_t _chunkSize, size_t initNumChunks = 1) : chunks(initNumChunks), chunkSize(_chunkSize) {
+    ArenaMemoryManager(const char *_name, bool _printDebugMessages, size_t _chunkSize, size_t initNumChunks = 1) : chunks(initNumChunks), chunkSize(_chunkSize), name(_name), printDebugMessages(_printDebugMessages) {
         if (initNumChunks == 0) initNumChunks = 1; //must have at least one initial chunk!
         for (std::vector<char *>::iterator chunk = chunks.begin(); chunk != chunks.end(); ++chunk) {
             *chunk = new char[chunkSize];
@@ -57,7 +58,7 @@ public:
         if (currentPointer > endPointer) {
             if (n > chunkSize) {
                 std::ostringstream fmt;
-                fmt << "In ArenaMemoryManager: chunkSize " << chunkSize << " is smaller than requested allocation size " << n << ". Please increase chunkSize.";
+                fmt << "In ArenaMemoryManager(" << name << "): chunkSize " << chunkSize << " is smaller than requested allocation size " << n << ". Please increase chunkSize.";
                 throw std::runtime_error(fmt.str());
             }
             ++currentChunk;
@@ -67,6 +68,12 @@ public:
             result = chunks[currentChunk];
             endPointer = result + chunkSize;
             currentPointer = result + n;
+            if (printDebugMessages) {
+                std::ostringstream fmt;
+                fmt << "-> WARNING: In ArenaMemoryManager(" << name << "): chunkSize " << chunkSize << ", numChunks: " << currentChunk << '/' << (chunks.size()-1) << "\n";
+                std::string s = fmt.str();
+                fputs(s.c_str(), stderr);
+            }
         }
         return result;
     }
@@ -94,6 +101,8 @@ protected:
     size_t currentChunk;
     char *currentPointer;
     char *endPointer;
+    const char *name;
+    bool printDebugMessages;
 };
 
 #endif
