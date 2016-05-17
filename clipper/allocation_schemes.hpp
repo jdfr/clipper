@@ -101,11 +101,6 @@ public:
         currentPointer = chunks[currentChunk];
         endPointer = currentPointer + chunkSize;
         for (std::vector<char *>::iterator bigchunk = bigchunks.begin(); bigchunk != bigchunks.end(); ++bigchunk) {
-                std::ostringstream fmt;
-                fmt << "In ArenaMemoryManager(" << name << "): going to remove bigchunk " << (bigchunk-bigchunks.begin()) << " /  " << bigchunks.size() << "\n";
-                std::string s = fmt.str();
-                fputs(s.c_str(), stderr);
-          
             delete[] * bigchunk;
         }
         bigchunks.clear();
