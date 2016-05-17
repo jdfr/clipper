@@ -37,7 +37,8 @@ public:
     static const bool useDelete                       = false;
     static const bool useReset                        = true;
     static const bool allocator_default_constructible = false;
-    ArenaMemoryManager(const char *_name, bool _printDebugMessages, size_t _chunkSize, size_t initNumChunks = 1) : chunks(initNumChunks), chunkSize(_chunkSize), name(_name), printDebugMessages(_printDebugMessages) {
+    
+    ArenaMemoryManager(const char *_name, bool _printDebugMessages, size_t _bigchunkSize, size_t _chunkSize, size_t initNumChunks = 1) : chunks(initNumChunks), bigchunkSize(_bigchunkSize), chunkSize(_chunkSize), name(_name), printDebugMessages(_printDebugMessages) {
         if (initNumChunks == 0) initNumChunks = 1; //must have at least one initial chunk!
         for (std::vector<char *>::iterator chunk = chunks.begin(); chunk != chunks.end(); ++chunk) {
             *chunk = new char[chunkSize];
@@ -45,9 +46,18 @@ public:
         reset();
     }
     ~ArenaMemoryManager() { free(); delete[] chunks.front(); }
-    //PLEASE NOTE: argument n MUST be aligned to whatever the maximum alignment used in the arena!!!!!
-    //we could align it on each call, but I wonder how likely is the compiler to optimize it away when not required...
     void *allocate(size_t n) {
+        if (n > bigchunkSize) {
+            if (printDebugMessages) {
+                std::ostringstream fmt;
+                fmt << "In ArenaMemoryManager(" << name << "): allocating bigchunk of size " << n << "...\n";
+                std::string s = fmt.str();
+                fputs(s.c_str(), stderr);
+            }
+            char *result = new char[n];
+            bigchunks.push_back(result);
+            return result;
+        }
         if ((n % sizeof(double)) != 0) {
             //C++ should never call this method with n such that this branch gets activated.
             //But, just in case, we assume that aligning to sizeof(double)==8 should be enough
@@ -57,9 +67,15 @@ public:
         currentPointer += n;
         if (currentPointer > endPointer) {
             if (n > chunkSize) {
-                std::ostringstream fmt;
-                fmt << "In ArenaMemoryManager(" << name << "): chunkSize " << chunkSize << " is smaller than requested allocation size " << n << ". Please increase chunkSize.";
-                throw std::runtime_error(fmt.str());
+                if (printDebugMessages) {
+                    std::ostringstream fmt;
+                    fmt << "In ArenaMemoryManager(" << name << "): chunkSize " << chunkSize << " is smaller than requested allocation size " << n << ". Please set bigchunkSize (currently " << bigchunkSize << ") and chunkSize (currently " << chunkSize << ") appropriately.\n";
+                    std::string s = fmt.str();
+                    fputs(s.c_str(), stderr);
+                }
+                result = new char[n];
+                bigchunks.push_back(result);
+                return result;
             }
             ++currentChunk;
             if (currentChunk >= chunks.size()) {
@@ -84,6 +100,15 @@ public:
         currentChunk = 0;
         currentPointer = chunks[currentChunk];
         endPointer = currentPointer + chunkSize;
+        for (std::vector<char *>::iterator bigchunk = bigchunks.begin(); bigchunk != bigchunks.end(); ++bigchunk) {
+                std::ostringstream fmt;
+                fmt << "In ArenaMemoryManager(" << name << "): going to remove bigchunk " << (bigchunk-bigchunks.begin()) << " /  " << bigchunks.size() << "\n";
+                std::string s = fmt.str();
+                fputs(s.c_str(), stderr);
+          
+            delete[] * bigchunk;
+        }
+        bigchunks.clear();
     }
     //will free all chunks EXCEPT the first one.
     //Rationale: sucessful calls to allocate(0) must return non-NULL pointers.
@@ -97,6 +122,8 @@ public:
     }
 protected:
     std::vector<char *> chunks;
+    std::vector<char *> bigchunks;
+    size_t bigchunkSize;
     size_t chunkSize;
     size_t currentChunk;
     char *currentPointer;
