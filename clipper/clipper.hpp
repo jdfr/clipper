@@ -412,6 +412,7 @@ private:
 
 template<typename CLIPPER_OBJECT> void ClipperEndOperation(CLIPPER_OBJECT &obj, PolyTree *pt = NULL) {
     if (CLIPPER_MMANAGER::useReset) {
+        if (pt != NULL) pt->Clear();
         obj.manager.reset();
     }
 }
