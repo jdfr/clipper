@@ -39,6 +39,8 @@ typedef union T64 {
     T64() {}
     T64(clp::cInt _i) : i(_i) {}
     T64(double    _d) : d(_d) {}
+    void operator=(clp::cInt _i) { i = _i; }
+    void operator=(double    _d) { d = _d; }
 } T64;
 
 class IOErr {
