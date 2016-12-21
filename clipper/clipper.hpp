@@ -170,6 +170,19 @@ private:
     friend class ClipperOffset; 
 };
 
+/* IMPORTANT DIFFERENCE WITH ORIGINAL CLIPPER CODE:
+   In the original ClipperLib, PolyTree was intended as another datatype to be instantiated at
+   any time just as Paths. After refactoring the code to use custom memory managers, this is
+   no longer possible, because PolyTree's internals contain references to memory areas that
+   are allocated with the custom manager, so they cannot be used after calling manager.reset().
+   For simplicity, the following usage pattern was decided:
+       -Both Clipper.Clear() and ClipperOffset.Clear() call manager.reset().
+       -As a consequence, any PolyTree filled with Clipper.Execute() or ClipperLib.Execute()
+        cannot be used after calling Clear().
+       -This is quite confusing, especially for people used to the old way to use ClipperLib.
+        To make the issue more explicit, Clipper and ClipperOffset were modified to own the
+        PolyTree after the .Execute(), and client code only gets a pointer to it.
+   TAKEAWAY: PolyTree data MUST be processed BEFORE calling clipper.Clear() or ClipperOffset.Clear().*/
 class PolyTree: public PolyNode
 { 
 protected:
@@ -267,6 +280,8 @@ protected:
   MinimaList::iterator m_CurrentLM;
   MinimaList           m_MinimaList;
 
+  PolyTree          m_PolyTreeSolution;
+  bool              m_UsingPolyTree;
   bool              m_UseFullRange;
   EdgeList          m_edges;
   bool              m_PreserveCollinear;
@@ -290,11 +305,13 @@ public:
       Paths &solution,
       PolyFillType subjFillType,
       PolyFillType clipFillType);
+  //WARNING: the returned PolyTree will be emptied when calling Clear()
   bool Execute(ClipType clipType,
-      PolyTree &polytree,
+      PolyTree *&solution,
       PolyFillType fillType = pftEvenOdd);
+  //WARNING: the returned PolyTree will be emptied when calling Clear()
   bool Execute(ClipType clipType,
-      PolyTree &polytree,
+      PolyTree *&solution,
       PolyFillType subjFillType,
       PolyFillType clipFillType);
   bool ReverseSolution() { return m_ReverseOutput; };
@@ -319,7 +336,6 @@ private:
   PolyFillType     m_ClipFillType;
   PolyFillType     m_SubjFillType;
   bool             m_ReverseOutput;
-  bool             m_UsingPolyTree; 
   bool             m_StrictSimple;
 #ifdef use_xyz
   ZFillCallback   m_ZFill; //custom callback 
@@ -385,7 +401,8 @@ public:
   void AddPath(const Path& path, JoinType joinType, EndType endType);
   void AddPaths(const Paths& paths, JoinType joinType, EndType endType);
   void Execute(Paths& solution, double delta);
-  void Execute(PolyTree& solution, double delta);
+  //WARNING: the returned PolyTree will be emptied when calling Clear()
+  void Execute(PolyTree *&solution, double delta);
   void Clear();
   double MiterLimit;
   double ArcTolerance;
@@ -399,6 +416,7 @@ private:
   double m_miterLim, m_StepsPerRad;
   IntPoint m_lowest;
   PolyNode m_polyNodes;
+  Clipper clpr;
 
   void FixOrientations();
   void DoOffset(double delta);
@@ -408,14 +426,6 @@ private:
   void DoRound(int j, int k);
   friend class PolyTree;
 };
-//------------------------------------------------------------------------------
-
-template<typename CLIPPER_OBJECT> void ClipperEndOperation(CLIPPER_OBJECT &obj, PolyTree *pt = NULL) {
-    if (CLIPPER_MMANAGER::useReset) {
-        if (pt != NULL) pt->Clear();
-        obj.manager.reset();
-    }
-}
 //------------------------------------------------------------------------------
 
 class clipperException : public std::exception

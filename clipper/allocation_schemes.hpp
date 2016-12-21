@@ -9,7 +9,8 @@
 
 /*this class is intended to have a common interface with ArenaMemoryManager,
 to avoid heavy use of template metaprogramming (which would require
-extensive changes to the code using ClipperLib)*/
+extensive changes to the code using ClipperLib, as well as very probably
+being very cumbersome to maintain compatibility with C++98 or C++03)*/
 class SimpleMemoryManager {
 public:
     static const bool isArena                         = false;
@@ -26,10 +27,12 @@ public:
 protected:
 };
 
-/*this is a dumb memory arena. It allocates memory as needeed, but never really frees
-it until it is reset, so depending on the workload it may require *a lot* of memory.
-But it is real fast, because allocation usually just increments a pointer, and
-deallocation is a NOP. Allocates new memory chunks as needed*/
+/*this is a bump allocator with multiple memory arenas (it automatically allocates
+new arenas as needed, and big allocations get their own private arena). It allocates
+memory as needeed, but never frees it until it is reset(), so depending on the
+workload it may require *a lot* of memory. Also, it does not free the arenas unless
+you call free(). But it is real fast, because allocation for small objects is O(1)
+with a very small constant!*/
 class ArenaMemoryManager {
 public:
     static const bool isArena                         = true;

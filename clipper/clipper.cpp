@@ -918,8 +918,9 @@ bool HorzSegmentsOverlap(cInt seg1a, cInt seg1b, cInt seg2a, cInt seg2b)
 
 ClipperBase::ClipperBase(CLIPPER_MMANAGER &_manager) : manager(_manager) //constructor
 {
-  m_CurrentLM = m_MinimaList.begin(); //begin() == end() here
-  m_UseFullRange = false;
+  m_CurrentLM     = m_MinimaList.begin(); //begin() == end() here
+  m_UseFullRange  = false;
+  m_UsingPolyTree = false;
 }
 //------------------------------------------------------------------------------
 
@@ -1280,9 +1281,11 @@ void ClipperBase::Clear()
       }
       m_edges.clear();
   }
-
-  m_UseFullRange = false;
-  m_HasOpenPaths = false;
+  if (m_UsingPolyTree) m_PolyTreeSolution.Clear();
+  m_UsingPolyTree = false;
+  m_UseFullRange  = false;
+  m_HasOpenPaths  = false;
+  if (CLIPPER_MMANAGER::useReset) manager.reset();
 }
 
 //------------------------------------------------------------------------------
@@ -1547,7 +1550,7 @@ bool Clipper::Execute(ClipType clipType, Paths &solution, PolyFillType fillType)
 }
 //------------------------------------------------------------------------------
 
-bool Clipper::Execute(ClipType clipType, PolyTree &polytree, PolyFillType fillType)
+bool Clipper::Execute(ClipType clipType, PolyTree *&polytree, PolyFillType fillType)
 {
     return Execute(clipType, polytree, fillType, fillType);
 }
@@ -1573,7 +1576,7 @@ bool Clipper::Execute(ClipType clipType, Paths &solution,
 }
 //------------------------------------------------------------------------------
 
-bool Clipper::Execute(ClipType clipType, PolyTree& polytree,
+bool Clipper::Execute(ClipType clipType, PolyTree *&polytree,
     PolyFillType subjFillType, PolyFillType clipFillType)
 {
   if( m_ExecuteLocked ) return false;
@@ -1583,9 +1586,10 @@ bool Clipper::Execute(ClipType clipType, PolyTree& polytree,
   m_ClipType = clipType;
   m_UsingPolyTree = true;
   bool succeeded = ExecuteInternal();
-  if (succeeded) BuildResult2(polytree);
+  if (succeeded) BuildResult2(m_PolyTreeSolution);
   DisposeAllOutRecs();
   m_ExecuteLocked = false;
+  polytree = &m_PolyTreeSolution;
   return succeeded;
 }
 //------------------------------------------------------------------------------
@@ -3864,7 +3868,7 @@ DoublePoint GetUnitNormal(const IntPoint &pt1, const IntPoint &pt2)
 //------------------------------------------------------------------------------
 // ClipperOffset class
 //------------------------------------------------------------------------------
-ClipperOffset::ClipperOffset(CLIPPER_MMANAGER &_manager, double miterLimit, double arcTolerance) : manager(_manager)
+ClipperOffset::ClipperOffset(CLIPPER_MMANAGER &_manager, double miterLimit, double arcTolerance) : manager(_manager), clpr(_manager)
 {
   this->MiterLimit = miterLimit;
   this->ArcTolerance = arcTolerance;
@@ -3888,6 +3892,7 @@ void ClipperOffset::Clear()
   }
   m_polyNodes.Childs.clear();
   m_lowest.X = -1;
+  clpr.Clear(); //this calls manager.reset(), so we do not need to do it again
 }
 //------------------------------------------------------------------------------
 
@@ -3985,7 +3990,6 @@ void ClipperOffset::Execute(Paths& solution, double delta)
   DoOffset(delta);
   
   //now clean up 'corners' ...
-  Clipper clpr(manager);
   clpr.AddPaths(m_destPolys, ptSubject, true);
   if (delta > 0)
   {
@@ -4003,19 +4007,18 @@ void ClipperOffset::Execute(Paths& solution, double delta)
     clpr.AddPath(outer, ptSubject, true);
     clpr.ReverseSolution(true);
     clpr.Execute(ctUnion, solution, pftNegative, pftNegative);
+    clpr.ReverseSolution(false);
     if (solution.size() > 0) solution.erase(solution.begin());
   }
 }
 //------------------------------------------------------------------------------
 
-void ClipperOffset::Execute(PolyTree& solution, double delta)
+void ClipperOffset::Execute(PolyTree *&solution, double delta)
 {
-  solution.Clear();
   FixOrientations();
   DoOffset(delta);
 
   //now clean up 'corners' ...
-  Clipper clpr(manager);
   clpr.AddPaths(m_destPolys, ptSubject, true);
   if (delta > 0)
   {
@@ -4033,18 +4036,19 @@ void ClipperOffset::Execute(PolyTree& solution, double delta)
     clpr.AddPath(outer, ptSubject, true);
     clpr.ReverseSolution(true);
     clpr.Execute(ctUnion, solution, pftNegative, pftNegative);
+    clpr.ReverseSolution(false);
     //remove the outer PolyNode rectangle ...
-    if (solution.ChildCount() == 1 && solution.Childs[0]->ChildCount() > 0)
+    if (solution->ChildCount() == 1 && solution->Childs[0]->ChildCount() > 0)
     {
-      PolyNode* outerNode = solution.Childs[0];
-      solution.Childs.reserve(outerNode->ChildCount());
-      solution.Childs[0] = outerNode->Childs[0];
-      solution.Childs[0]->Parent = outerNode->Parent;
+      PolyNode* outerNode = solution->Childs[0];
+      solution->Childs.reserve(outerNode->ChildCount());
+      solution->Childs[0] = outerNode->Childs[0];
+      solution->Childs[0]->Parent = outerNode->Parent;
       for (int i = 1; i < outerNode->ChildCount(); ++i)
-        solution.AddChild(*outerNode->Childs[i]);
+        solution->AddChild(*outerNode->Childs[i]);
     }
     else
-      solution.Clear();
+      solution->Clear();
   }
 }
 //------------------------------------------------------------------------------
