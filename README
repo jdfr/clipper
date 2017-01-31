@@ -6,9 +6,67 @@ Main differences:
 
 -simple IO functions for ClipperLib::Paths and related types are added in a separate file
 
--it is patched to optionally use a very simple and potentially very fast custom allocator instead of std::allocator.
+-fancy template metaprogramming and neat C++11 features are not used, both to avoid unnecessary complexity and to
+keep the project viable in old compilers.
+
+-it is patched to optionally use a very simple and potentially very fast custom allocator instead of std::allocator,
+because the original code can allocate *many* small objects, so it spends almost all of its time managing the memory.
+Our custom bump allocator reserves large swaths of memory and bump-allocates small chunks as requested.
 PLEASE NOTE: this feature breaks drop-in compatibility with he original ClipperLib, because the custom allocator
 is not default-constructible and the underlying infrastructure must be cleaned up after each clipping operation.
-However, adaptation should require only minimal changes for most applications.
+However, adaptation should require only minimal changes for most applications. Adaptation is a matter of taking into
+account the following:
+
+  *By default, the old-style allocation is used. Only two main differences with vanilla ClipperLib:
+  
+     1. Clipper and ClipperOffset objects take a CLIPPER_MMANAGER object on construction:
+     
+        BEFORE:
+            ClipperLib::Clipper clipper;
+            ClipperLib::ClipperOffset offset;
+     
+        AFTER:
+            CLIPPER_MMANAGER manager;
+            ClipperLib::Clipper clipper(manager);
+            ClipperLib::ClipperOffset offset(manager);
+     
+     2. PolyTrees are now owned by Clipper and ClipperOffset objects. Execute() methods set pointers to these
+     owned PolyTrees, and the PolyTrees are cleared when executing the method Clear() of the owner.
+     
+        BEFORE:
+            ClipperLib::Clipper clipper;
+            ClipperLib::PolyTree polytree;
+            
+            //configure the clipper object and add paths as necessary...
+            
+            clipper.Execute(cliptype, polytree);
+            clipper.Clear();
+            
+            //read polytree's data...
+            
+     
+        AFTER:
+            CLIPPER_MMANAGER manager;
+            ClipperLib::Clipper clipper(manager);
+            ClipperLib::PolyTree *polytree;
+            
+            //configure the clipper object and add paths as necessary...
+            
+            clipper.Execute(cliptype, polytree);
+            
+            //read polytree's data...
+     
+            clipper.Clear();
+     
+         
+  *To use the (custom) bump allocator, define CLIPPER_USE_ARENA before it is used in clipper.hpp (either 
+  #define it or add its definition to the compiler arguments). Then, you use ClipperLib just as described 
+  in the previous point, exceptyou have to add some arguments upon constructing a CLIPPER_MMANAGER. Also,
+  you MUST use a different CLIPPER_MMANAGER for each Clipper/ClipperOffset object, because nasty
+  interactions will crash your application otherwise. The arguments are simple enough:
+            
+            CLIPPER_MMANAGER manager("name_for_debug_purposes", bool_arg_true_if_you_want_debug_messages,
+                                     minimum_allocation_size_in_bytes_before_resorting_to_traditional_allocation,
+                                     arena_size_in_bytes);
 
 Please note: as the original ClipperLib, this is intended to be source-included (rather than linked) in other projects
