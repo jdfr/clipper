@@ -1,10 +1,10 @@
 /*******************************************************************************
 *                                                                              *
 * Author    :  Angus Johnson                                                   *
-* Version   :  6.4.1                                                           *
-* Date      :  5 December 2016                                                 *
+* Version   :  6.4.2                                                           *
+* Date      :  27 February 2017                                                *
 * Website   :  http://www.angusj.com                                           *
-* Copyright :  Angus Johnson 2010-2016                                         *
+* Copyright :  Angus Johnson 2010-2017                                         *
 *                                                                              *
 * License:                                                                     *
 * Use, modification & distribution is subject to Boost Software License Ver 1. *
@@ -1919,7 +1919,7 @@ OutPt* Clipper::AddLocalMinPoly(TEdge *e1, TEdge *e2, const IntPoint &Pt)
         prevE = e->PrevInAEL;
   }
 
-  if (prevE && prevE->OutIdx >= 0)
+  if (prevE && prevE->OutIdx >= 0 && prevE->Top.Y < Pt.Y && e->Top.Y < Pt.Y)
   {
     cInt xPrev = TopX(*prevE, Pt.Y);
     cInt xE = TopX(*e, Pt.Y);
@@ -2790,7 +2790,11 @@ void Clipper::ProcessHorizontal(TEdge *horzEdge)
 
     if (horzEdge->OutIdx >= 0 && !IsOpen)  //note: may be done multiple times
 		{
-            op1 = AddOutPt(horzEdge, e->Curr);
+#ifdef use_xyz
+			if (dir == dLeftToRight) SetZ(e->Curr, *horzEdge, *e);
+			else SetZ(e->Curr, *e, *horzEdge);
+#endif      
+			op1 = AddOutPt(horzEdge, e->Curr);
 			TEdge* eNextHorz = m_SortedEdges;
 			while (eNextHorz)
 			{
@@ -3118,9 +3122,12 @@ void Clipper::ProcessEdgesAtTopOfScanbeam(const cInt topY) {
                 AddEdgeToSEL(e);
             } else
             {
-                e->Curr.X = TopX(*e, topY);
+                e->Curr.X = TopX( *e, topY );
                 e->Curr.Y = topY;
-            }
+#ifdef use_xyz
+		e->Curr.Z = topY == e->Top.Y ? e->Top.Z : (topY == e->Bot.Y ? e->Bot.Z : 0);
+#endif
+	  }
 
             //When StrictlySimple and 'e' is being touched by another edge, then
             //make sure both edges have a vertex here ...
