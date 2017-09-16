@@ -14,7 +14,7 @@ Please note: as the original ClipperLib, this library is intended to be source-i
 
 * It is patched to optionally use a very simple and potentially very fast custom allocator instead of `std::allocator`, because the original code can allocate *huge* amounts of short-lived small objects, so under some workloads it spends most of its time managing the memory. Our custom bump allocator reserves large swaths of memory and bump-allocates small chunks as requested.
 
-**PLEASE NOTE**: the last feature breaks drop-in compatibility with he original ClipperLib, because the custom allocator is not default-constructible and the underlying infrastructure must be cleaned up after each clipping operation. However, adaptation should require only minimal changes for most applications. Adaptation is a matter of taking into account the following:
+**PLEASE NOTE**: the last feature breaks drop-in compatibility with the original ClipperLib, because the custom allocator is not default-constructible and the underlying infrastructure must be cleaned up after each clipping operation. However, adaptation should require only minimal changes for most applications. Adaptation is a matter of taking into account the following:
 
  * By default, the old-style allocation is used. Only two main differences with vanilla ClipperLib:
   
